@@ -67,3 +67,4 @@ folder is written.
 
 ## Status
 - 2026-10-11: v0.1 built and tested (9 tools, CLI, FSRS with ts-fsrs@5.4.2, deterministic candidate extraction with origins, atomic writes, e2e passing).
+- 2026-10-11: v0.2.0 complete (11 tools: added `vega_session` and `vega_sync`; prompts `review_today` and `make_cards`; guide topic `session`; daily review sessions generated into fixed `<collection>/session/` folder as Aurora decks with `srs` slides, origin lesson href links, and automatic idempotent sync from `progress.jsonl` into FSRS; CLI `session` and `sync` commands; e2e test suite passing).

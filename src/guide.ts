@@ -5,6 +5,7 @@ export const GUIDE_TOPICS = [
   "workflows",
   "candidates",
   "origins",
+  "session",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -68,9 +69,10 @@ export function getGuideTopic(topic?: string): string {
    - Agent rà soát, tinh chỉnh câu chữ theo quy tắc soạn thẻ.
    - Gọi \`vega_add { cards: [...] }\` để lưu vào bộ sưu tập. Hệ thống tự động khử trùng lặp và gán ID + trạng thái FSRS ban đầu.
 
-3. **Phiên ôn tập hàng ngày (Daily Study):**
-   - Gọi \`vega_due\` để lấy danh sách thẻ cần học hôm nay (quá hạn -> đến hạn -> thẻ mới có giới hạn).
-   - Ôn tập và gửi đánh giá qua \`vega_review { id, rating }\`.
+3. **Phiên ôn tập hàng ngày với Aurora Deck (Daily Study):**
+   - Gọi prompt \`review_today\` hoặc tool \`vega_session\` để tạo bộ slide ôn tập hàng ngày tại \`.vega/session/\`.
+   - Xem trực tiếp bằng \`aurora_preview\` hoặc mở file HTML, lật thẻ và đánh giá qua phím 1-4.
+   - Gọi \`vega_sync\` để tự động đồng bộ đánh giá vào FSRS.
 
 4. **Theo dõi tiến độ & Thẻ vướng (Monitoring):**
    - Gọi \`vega_stats\` để xem số lượng thẻ theo trạng thái, tỉ lệ nhớ thực tế 30 ngày qua, và các thẻ bị quên từ 6 lần trở lên (Leeches).`;
@@ -108,6 +110,35 @@ Các loại \`kind\`:
 - \`aurora-palace\`: Trạm trí nhớ Loci từ Aurora slide palace (locator: \`slide N (palace), station: ...\`).
 - \`manual\`: Thẻ do người học hoặc agent tự thêm thủ công.`;
 
+    case "session":
+      return `# Vega Review Sessions & Aurora Integration (Phiên Ôn Tập Hàng Ngày)
+
+1. **Phiên ôn tập hàng ngày (\`vega_session\`):**
+   - Lấy hàng đợi hôm nay theo quy tắc FSRS (quá hạn -> đến hạn -> thẻ mới có giới hạn).
+   - Ghi vào DUY NHẤT một thư mục cố định \`<hub>/.vega/session/\` với file \`deck.json\`.
+   - Cấu trúc bộ slide ôn tập:
+     - Slide Title: Tiêu đề "Ôn tập hôm nay · <date>", thống kê số thẻ theo từng môn học.
+     - Slide SRS: Mỗi thẻ là một slide loại \`srs\` gồm mặt trước (\`front\`), mặt sau (\`back\`), gợi ý (\`hint\`), mỏ neo trí nhớ (\`hook\`), và nhãn nguồn kèm đường dẫn liên kết tương đối (\`origin\`).
+     - Slide Summary: Tổng kết phiên ôn tập và nhắc nhở đồng bộ kết quả.
+   - Tự động biên dịch sang \`index.html\` nếu tìm thấy Aurora CLI (\`VEGA_AURORA_CLI\` hoặc đường dẫn mặc định).
+   - Thư mục được ghi đè mỗi ngày, không tạo thư mục rác theo ngày để bảo vệ ổ đĩa exFAT.
+
+2. **Slide SRS trong Aurora Slides:**
+   - Phím Space / Enter: Lật thẻ xem đáp án và mỏ neo trí nhớ.
+   - Phím 1 (Again), 2 (Hard), 3 (Good), 4 (Easy): Đánh giá mức độ nhớ.
+   - Bấm vào nguồn gốc (\`origin\`) để mở ngay bài học gốc chứa kiến thức đó.
+
+3. **Ghi nhận sự kiện học tập (\`progress.jsonl\`):**
+   - Khi xem qua \`aurora_preview\`, các thao tác đánh giá phát sinh sự kiện loại \`card\`:
+     \`{"v":1, "t":"...", "course":null, "lesson":"session", "deck":"...", "slide":N, "type":"card", "card":"c_xxx", "rating":"good", "ms":3500}\`
+   - Dữ liệu được ghi vào \`.vega/session/progress.jsonl\` hoặc xuất ra file \`aurora-progress-*.jsonl\`.
+
+4. **Đồng bộ tự động (\`vega_sync\`):**
+   - Đọc \`.vega/session/progress.jsonl\` hoặc file xuất, lọc các sự kiện \`card\`.
+   - Áp dụng các đánh giá theo thứ tự thời gian vào thuật toán FSRS.
+   - Đảm bảo tính **Bất biến (Idempotent)**: Lưu hash các sự kiện đã xử lý vào \`.vega/sync-state.json\`, chạy lại nhiều lần không bị cộng dồn hay sai lệch.
+   - Tự động bỏ qua và cảnh báo thẻ không tồn tại hoặc dòng dữ liệu lỗi.`;
+
     case "overview":
     default:
       return `# Vega MCP - Guide Overview
@@ -126,6 +157,8 @@ Available guide topics:
 - \`fsrs\`: FSRS in plain words, 4 ratings, stability & retrievability (Nguyên lý FSRS)
 - \`workflows\`: End-to-end study and authoring workflows (Quy trình vận hành)
 - \`candidates\`: Extraction mechanics from Polaris and Aurora files (Trích xuất ứng viên)
-- \`origins\`: Origin tracking and locators (Truy xuất nguồn gốc)`;
+- \`origins\`: Origin tracking and locators (Truy xuất nguồn gốc)
+- \`session\`: Daily review sessions as Aurora decks & FSRS sync (Phiên ôn tập & Đồng bộ)`;
   }
 }
+

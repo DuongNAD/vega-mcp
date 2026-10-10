@@ -170,3 +170,90 @@ export interface StatsResult {
   forecast_7d: Array<{ date: string; due_count: number }>;
   summary: string;
 }
+
+/* ───────── Aurora SRS Slide & Event Schemas ───────── */
+
+export interface SrsSlideOrigin {
+  label: string;
+  href?: string;
+}
+
+export interface SrsSlide {
+  type: "srs";
+  id?: string;
+  card: string;
+  front: string;
+  back: string;
+  hint?: string;
+  hook?: string;
+  origin?: SrsSlideOrigin;
+}
+
+export const AuroraCardEventSchema = z.strictObject({
+  v: z.number().int().default(1),
+  t: z.string().describe("ISO date-time with offset"),
+  course: z.string().nullable().optional(),
+  lesson: z.string().optional().describe("Deck folder name, e.g. session"),
+  deck: z.string().optional().describe("Deck title"),
+  slide: z.number().int().optional(),
+  slideId: z.string().nullable().optional(),
+  type: z.literal("card"),
+  card: z.string().min(1).describe("Vega card ID"),
+  rating: z.enum(REVIEW_RATINGS).describe("Rating: again | hard | good | easy"),
+  ms: z.number().int().optional().describe("Response time in ms"),
+});
+export type AuroraCardEvent = z.output<typeof AuroraCardEventSchema>;
+
+export const SyncStateSchema = z.strictObject({
+  version: z.number().int().default(1),
+  last_sync: z.string().optional(),
+  processed_hashes: z.array(z.string()).default([]),
+});
+export type SyncState = z.output<typeof SyncStateSchema>;
+
+export interface SessionOptions {
+  date?: string;
+  limit?: number;
+  new_limit?: number;
+  subject?: string;
+  build?: boolean;
+  hub?: string;
+}
+
+export interface SessionResult {
+  date: string;
+  deck_path: string;
+  session_dir: string;
+  card_count: number;
+  built: boolean;
+  cli_output?: string;
+  study_instructions: string;
+  summary: string;
+}
+
+export interface SyncOptions {
+  file?: string;
+  hub?: string;
+}
+
+export interface SyncCardUpdate {
+  id: string;
+  rating: ReviewRating;
+  state_before: string;
+  state_after: string;
+  next_due: string;
+  scheduled_days: number;
+}
+
+export interface SyncResult {
+  reviews_applied: number;
+  again_count: number;
+  retention_today: number | null;
+  retention_percent: string;
+  card_updates: SyncCardUpdate[];
+  skipped_duplicates: number;
+  skipped_unknown: string[];
+  malformed_lines: number;
+  summary: string;
+}
+

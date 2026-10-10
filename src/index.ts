@@ -2,13 +2,15 @@
  * Vega MCP: Adaptive Spaced Repetition (FSRS) Server & CLI.
  *
  *   node dist/vega.mjs                 -> MCP server on stdio
+ *   node dist/vega.mjs session         -> CLI build today's review session deck
+ *   node dist/vega.mjs sync [file]     -> CLI sync Aurora progress ratings to FSRS
  *   node dist/vega.mjs due             -> CLI list today's due queue
  *   node dist/vega.mjs review <id> <r> -> CLI review a card
  *   node dist/vega.mjs stats           -> CLI view collection stats
  *   node dist/vega.mjs candidates <f>  -> CLI extract card candidates
  *   node dist/vega.mjs add <f>         -> CLI add cards
  *   node dist/vega.mjs guide [topic]   -> CLI view guide
- *   node dist/vega.mjs version         -> 0.1.0
+ *   node dist/vega.mjs version         -> 0.2.0
  *   node dist/vega.mjs help            -> CLI command list
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -33,6 +35,7 @@ import {
   type ReviewResult,
 } from "./schema.js";
 import { getDueQueue, getStats } from "./scheduler.js";
+import { createSessionDeck } from "./session.js";
 import {
   addCards,
   appendReviewLog,
@@ -44,6 +47,7 @@ import {
   saveCollection,
   suspendCard,
 } from "./store.js";
+import { syncProgress } from "./sync.js";
 import { errMsg, nowIso, parseDate, VERSION } from "./util.js";
 
 export * from "./candidates.js";
@@ -51,7 +55,9 @@ export * from "./fsrs.js";
 export * from "./guide.js";
 export * from "./schema.js";
 export * from "./scheduler.js";
+export * from "./session.js";
 export * from "./store.js";
+export * from "./sync.js";
 export * from "./util.js";
 
 type Content = { type: "text"; text: string };
@@ -73,13 +79,15 @@ async function safe(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 export const INSTRUCTIONS = `Vega MCP is the spaced-repetition memory engine (FSRS) across Polaris and Aurora learning materials.
 
 Workflow:
-1. vega_guide { topic? } to read card-writing rules, FSRS principles, and workflows.
+1. vega_guide { topic? } to read card-writing rules, FSRS principles, session decks, and workflows.
 2. vega_candidates { path, from? } to extract raw candidate cards from Polaris facts/error logs or Aurora decks.
 3. Rewrite candidates following card rules (atomic idea, cloze for terms, keep memory hook, Vietnamese learner text).
 4. vega_add { cards } to validate, de-duplicate, and assign initial FSRS states.
-5. vega_due { subject?, limit?, date? } to get today's review queue (overdue -> due -> capped new cards) and forecast.
-6. vega_review { id, rating: "again"|"hard"|"good"|"easy", ms? } to submit review rating and advance memory state.
-7. vega_stats { subject? } to inspect true retention, leech cards, and upcoming workload.
+5. vega_due { subject?, limit?, date? } to inspect today's review queue and workload forecast.
+6. vega_session { date?, limit?, subject?, build? } to write today's review session into <hub>/.vega/session/ as an Aurora deck.
+7. Study the session via aurora_preview or browser, rating cards with 1-4.
+8. vega_sync { file? } to sync ratings from progress.jsonl back into FSRS idempotently.
+9. vega_stats { subject? } to inspect true retention, leech cards, and upcoming workload.
 
 Rules:
 - Atomic cards: exactly one idea per card; no unordered lists to recite.
@@ -89,7 +97,7 @@ Rules:
 - Never scan D: recursively; open files directly.
 
 Done when:
-Cards are extracted, validated with origins, scheduled via FSRS, and reviewed with atomic persistence.`;
+Cards are extracted, validated with origins, scheduled via FSRS, reviewed in Aurora sessions, and synced back with atomic persistence.`;
 
 export function createServer(): McpServer {
   const server = new McpServer({ name: "vega", version: VERSION }, { instructions: INSTRUCTIONS });
@@ -343,6 +351,123 @@ export function createServer(): McpServer {
       }),
   );
 
+  /* 10. vega_session */
+  server.registerTool(
+    "vega_session",
+    {
+      title: "Generate Daily Review Session as Aurora Deck",
+      description:
+        "Write today's review queue into fixed folder <collection>/session/deck.json with title, srs, and summary slides, and build with Aurora CLI.",
+      inputSchema: {
+        date: z.string().optional().describe("Target date (YYYY-MM-DD, default today)"),
+        limit: z.number().int().min(1).optional().default(100).describe("Max total cards in session"),
+        new_limit: z.number().int().min(0).optional().default(10).describe("Max new cards per day"),
+        subject: z.string().optional().describe("Filter by subject"),
+        build: z.boolean().optional().default(true).describe("Compile session deck with Aurora CLI"),
+        hub: z.string().optional().describe("Learning hub root directory"),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ date, limit, new_limit, subject, build, hub }) =>
+      safe(async () => {
+        const res = await createSessionDeck({ date, limit, new_limit, subject, build, hub });
+        return text(res.summary);
+      }),
+  );
+
+  /* 11. vega_sync */
+  server.registerTool(
+    "vega_sync",
+    {
+      title: "Synchronize Review Ratings from Aurora Progress Events",
+      description:
+        "Read <collection>/session/progress.jsonl and/or an exported progress file, apply card ratings in time order to FSRS idempotently, and update sync-state.json.",
+      inputSchema: {
+        file: z.string().optional().describe("Optional path to exported .jsonl progress file"),
+        hub: z.string().optional().describe("Learning hub root directory"),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ file, hub }) =>
+      safe(async () => {
+        const res = await syncProgress({ file, hub });
+        return text(res.summary);
+      }),
+  );
+
+  /* ───────── MCP Prompts ───────── */
+
+  server.registerPrompt(
+    "review_today",
+    {
+      title: "Daily Spaced Repetition Review",
+      description: "Run end-to-end daily review session with Vega and Aurora Slides",
+      argsSchema: {
+        date: z.string().optional().describe("Target review date (YYYY-MM-DD)"),
+        subject: z.string().optional().describe("Filter review by subject"),
+        hub: z.string().optional().describe("Learning hub root directory"),
+      },
+    },
+    ({ date, subject, hub }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              "Execute the daily spaced repetition review session:",
+              "1. Sync existing progress first: Call tool vega_sync {} to ensure cards and FSRS states are up to date.",
+              `2. Generate today's review deck: Call tool vega_session {${date ? ` date: "${date}",` : ""}${subject ? ` subject: "${subject}",` : ""}${hub ? ` hub: "${hub}",` : ""} build: true }.`,
+              "3. Study the review session interactively:",
+              "   - Live preview with auto-reload: Call tool aurora_preview { dir: \"<session_dir>\", open: true }",
+              "   - Or open <session_dir>/index.html in the browser.",
+              "   - Rate each card using keys 1 (Again), 2 (Hard), 3 (Good), 4 (Easy) or the rating buttons.",
+              "4. Sync review results back into FSRS: Once the study session is complete, call tool vega_sync {} to apply ratings to FSRS memory states.",
+              "5. Check retention statistics: Call tool vega_stats {} to review updated retention and upcoming workload.",
+            ].join("\n"),
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "make_cards",
+    {
+      title: "Author High-Quality Flashcards from Learning Materials",
+      description: "Extract candidates from Polaris/Aurora and author standardized Vega flashcards",
+      argsSchema: {
+        path: z.string().describe("Source file path (Polaris facts.json, errorlog.md, or Aurora deck.json)"),
+        subject: z.string().optional().describe("Subject name override"),
+        hub: z.string().optional().describe("Learning hub root directory"),
+      },
+    },
+    ({ path, subject, hub }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: [
+              `Extract and author standardized Vega flashcards from: ${path}`,
+              "",
+              "Follow this 3-step authoring workflow:",
+              `1. Extract candidate cards: Call tool vega_candidates { path: "${path}"${subject ? `, subject: "${subject}"` : ""} }.`,
+              "2. Refine candidates according to the 6 Card-Writing Rules (read vega_guide rules):",
+              "   - Rule 1 (Atomic): Exactly one concept per card; no multi-item recitations.",
+              "   - Rule 2 (Cloze): Use [[terms]] for definitions, formulas, or key tokens.",
+              "   - Rule 3 (No bare lists): Test distinctions, causes, or mechanisms instead of reciting lists.",
+              "   - Rule 4 (Preserve Hooks): Maintain memory palace stations, analogies, or vivid imagery in hook.",
+              "   - Rule 5 (Learner Language): Clear Vietnamese text with standard international technical terms.",
+              "   - Rule 6 (Origin Fidelity): Strictly keep origin path and locator pointing to the source file.",
+              `3. Add refined cards: Call tool vega_add { cards: [...], hub: "${hub ?? ""}" } to validate and initialize FSRS.`,
+            ].join("\n"),
+          },
+        },
+      ],
+    }),
+  );
+
   return server;
 }
 
@@ -380,6 +505,10 @@ export async function cli(argv: string[]): Promise<number> {
 Usage: node dist/vega.mjs <command> [options]
 
 Commands:
+  session                 Generate today's review session deck (<hub>/.vega/session/)
+                          Options: [--date <YYYY-MM-DD>] [--limit <n>] [--new-limit <n>] [--subject <sub>] [--no-build] [--hub <dir>] [--json]
+  sync [file]             Sync ratings from Aurora progress.jsonl / exported .jsonl into FSRS
+                          Options: [--file <file>] [--hub <dir>] [--json]
   due                     Show today's due queue and forecast
                           Options: [--subject <sub>] [--limit <n>] [--new-limit <n>] [--date <YYYY-MM-DD>] [--hub <dir>] [--json]
   review <id> <rating>    Submit review rating (again, hard, good, easy)
@@ -406,6 +535,53 @@ Commands:
       return 0;
     }
 
+    case "session": {
+      const date = getArg("--date");
+      const limitStr = getArg("--limit");
+      const newLimitStr = getArg("--new-limit");
+      const subject = getArg("--subject");
+      const hub = getArg("--hub");
+      const noBuild = argv.includes("--no-build");
+
+      const limit = limitStr ? parseInt(limitStr, 10) : undefined;
+      const new_limit = newLimitStr ? parseInt(newLimitStr, 10) : undefined;
+
+      const res = await createSessionDeck({
+        date,
+        limit,
+        new_limit,
+        subject,
+        build: !noBuild,
+        hub,
+      });
+
+      if (isJson) {
+        console.log(JSON.stringify(res, null, 2));
+      } else {
+        console.log(res.summary);
+      }
+      return 0;
+    }
+
+    case "sync": {
+      let file: string | undefined = undefined;
+      const firstPos = argv[1];
+      if (firstPos && !firstPos.startsWith("-")) {
+        file = firstPos;
+      } else {
+        file = getArg("--file");
+      }
+      const hub = getArg("--hub");
+
+      const res = await syncProgress({ file, hub });
+      if (isJson) {
+        console.log(JSON.stringify(res, null, 2));
+      } else {
+        console.log(res.summary);
+      }
+      return 0;
+    }
+
     case "due": {
       const subject = getArg("--subject");
       const limitStr = getArg("--limit");
@@ -421,13 +597,6 @@ Commands:
         console.log(JSON.stringify(res, null, 2));
       } else {
         console.log(res.summary);
-        if (res.queue.length > 0) {
-          console.log("\nCards to review:");
-          res.queue.forEach((c, i) => {
-            console.log(`  ${i + 1}. [${c.id}] [${stateName(c.fsrs.state)}] ${c.front}`);
-            if (c.hook) console.log(`     Hook: ${c.hook}`);
-          });
-        }
       }
       return 0;
     }
@@ -611,3 +780,4 @@ if (isMain) {
     });
   }
 }
+

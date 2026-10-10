@@ -298,10 +298,12 @@ const transport = new StdioClientTransport({
 await client.connect(transport);
 const call = (name, args = {}) => client.callTool({ name, arguments: args }, undefined, { timeout: 30000 });
 
+const fixtureProgressFile = join(TEST_DIR, "fixture_progress.jsonl");
+
 try {
   // 4.1 Server Identification and Instructions
   const info = client.getServerVersion();
-  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.1.0", `${info?.name} ${info?.version}`);
+  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.2.0", `${info?.name} ${info?.version}`);
 
   const instructions = client.getInstructions() ?? "";
   ok(
@@ -313,8 +315,8 @@ try {
   const { tools } = await client.listTools();
   const toolNames = tools.map((t) => t.name).sort();
   ok(
-    "all 9 tools registered",
-    toolNames.length === 9 &&
+    "all 11 tools registered",
+    toolNames.length === 11 &&
       toolNames.includes("vega_guide") &&
       toolNames.includes("vega_candidates") &&
       toolNames.includes("vega_add") &&
@@ -323,8 +325,35 @@ try {
       toolNames.includes("vega_delete") &&
       toolNames.includes("vega_due") &&
       toolNames.includes("vega_review") &&
-      toolNames.includes("vega_stats"),
+      toolNames.includes("vega_stats") &&
+      toolNames.includes("vega_session") &&
+      toolNames.includes("vega_sync"),
     toolNames.join(", "),
+  );
+
+  // 4.2b List & Get Prompts
+  const { prompts } = await client.listPrompts();
+  const promptNames = prompts.map((p) => p.name).sort();
+  ok(
+    "prompts review_today and make_cards registered",
+    promptNames.includes("review_today") && promptNames.includes("make_cards"),
+    promptNames.join(", "),
+  );
+
+  const reviewTodayPrompt = await client.getPrompt({ name: "review_today", arguments: {} });
+  const reviewTodayText = reviewTodayPrompt.messages?.[0]?.content?.text ?? "";
+  ok(
+    "review_today prompt guides vega_sync -> vega_session -> study -> vega_sync",
+    reviewTodayText.includes("vega_sync") &&
+      reviewTodayText.includes("vega_session") &&
+      reviewTodayText.includes("aurora_preview"),
+  );
+
+  const makeCardsPrompt = await client.getPrompt({ name: "make_cards", arguments: { path: tempDeckPath } });
+  const makeCardsText = makeCardsPrompt.messages?.[0]?.content?.text ?? "";
+  ok(
+    "make_cards prompt guides candidates -> rewrite -> add",
+    makeCardsText.includes("vega_candidates") && makeCardsText.includes("vega_add"),
   );
 
   // 4.3 vega_guide
@@ -335,7 +364,10 @@ try {
   r = await call("vega_guide", { topic: "fsrs" });
   ok("vega_guide fsrs topic", !r.isError && textOf(r).includes("Stability") && textOf(r).includes("Difficulty"));
   r = await call("vega_guide", { topic: "workflows" });
-  ok("vega_guide workflows topic", !r.isError && textOf(r).includes("Discovery") && textOf(r).includes("vega_due"));
+  ok("vega_guide workflows topic", !r.isError && textOf(r).includes("Discovery") && textOf(r).includes("vega_session"));
+  r = await call("vega_guide", { topic: "session" });
+  ok("vega_guide session topic", !r.isError && textOf(r).includes("vega_session") && textOf(r).includes("progress.jsonl"));
+
 
   // 4.4 vega_candidates tool
   r = await call("vega_candidates", { path: tempDeckPath });
@@ -479,7 +511,103 @@ try {
   r = await call("vega_stats", { date: "2026-10-11", hub: TEST_DIR });
   ok("vega_stats calculates stats", !r.isError && textOf(r).includes("Reviews Today: 2") && textOf(r).includes("30-Day True Retention:"));
 
-  // 4.13 Atomic writes check: no temporary files left in .vega
+  // 4.13 vega_session
+  r = await call("vega_session", { date: "2026-10-11", hub: TEST_DIR, build: false });
+  ok("vega_session runs successfully", !r.isError && textOf(r).includes("Vega Session Created for 2026-10-11"));
+
+  const sessionDeckFile = join(TEST_DIR, ".vega", "session", "deck.json");
+  ok("session/deck.json exists", existsSync(sessionDeckFile));
+  const sessionDeck = JSON.parse(readFileSync(sessionDeckFile, "utf8"));
+  ok(
+    "session deck has title slide with date and subject counts",
+    sessionDeck.slides[0].type === "title" && sessionDeck.slides[0].title.includes("2026-10-11"),
+  );
+
+  const srsSlide = sessionDeck.slides.find((s) => s.type === "srs");
+  ok(
+    "session deck has srs slides with card ID and origin",
+    Boolean(srsSlide && srsSlide.card && srsSlide.front && srsSlide.back && srsSlide.origin?.label),
+    `Card: ${srsSlide?.card}, Origin: ${srsSlide?.origin?.label}`,
+  );
+  ok("session deck ends with summary slide", sessionDeck.slides[sessionDeck.slides.length - 1].type === "summary");
+
+  // Fixed folder is reused on a second day
+  r = await call("vega_session", { date: "2026-10-12", hub: TEST_DIR, build: false });
+  const sessionDeckDay2 = JSON.parse(readFileSync(sessionDeckFile, "utf8"));
+  ok(
+    "fixed session/ folder reused on second day",
+    sessionDeckDay2.slides[0].title.includes("2026-10-12"),
+  );
+  const vegaSubdirs = readdirSync(join(TEST_DIR, ".vega")).filter((f) => f.startsWith("session"));
+  ok("only one fixed session folder exists in .vega", vegaSubdirs.length === 1 && vegaSubdirs[0] === "session");
+
+  // 4.14 vega_sync
+  const fixtureLines = [
+    JSON.stringify({ v: 1, t: "2026-10-11T12:00:00.000Z", course: null, lesson: "session", deck: "Ôn tập", slide: 2, type: "card", card: card1Id, rating: "good", ms: 3000 }),
+    JSON.stringify({ v: 1, t: "2026-10-11T12:05:00.000Z", course: null, lesson: "session", deck: "Ôn tập", slide: 3, type: "card", card: card2Id, rating: "again", ms: 4000 }),
+    JSON.stringify({ v: 1, t: "2026-10-11T12:10:00.000Z", course: null, lesson: "session", deck: "Ôn tập", slide: 4, type: "card", card: card1Id, rating: "easy", ms: 2000 }),
+    JSON.stringify({ v: 1, t: "2026-10-11T12:15:00.000Z", course: null, lesson: "session", deck: "Ôn tập", slide: 5, type: "card", card: "c_unknown_99999", rating: "good" }),
+    `{"v":1, "bad json line`,
+    JSON.stringify({ v: 1, t: "2026-10-11T12:20:00.000Z", type: "quiz", score: 1 }),
+  ];
+  writeFileSync(fixtureProgressFile, fixtureLines.join("\n"), "utf8");
+
+  // Offline ts-fsrs calculation for comparison
+  const collBeforeSync = JSON.parse(readFileSync(cardsJsonFile, "utf8"));
+  const card1Before = collBeforeSync.cards.find((c) => c.id === card1Id);
+  const card2Before = collBeforeSync.cards.find((c) => c.id === card2Id);
+
+  const expStep1 = vegaLib.stepFsrs(card1Before.fsrs, "good", new Date("2026-10-11T12:00:00.000Z"));
+  const expStep2 = vegaLib.stepFsrs(card2Before.fsrs, "again", new Date("2026-10-11T12:05:00.000Z"));
+  const expStep3 = vegaLib.stepFsrs(expStep1.nextState, "easy", new Date("2026-10-11T12:10:00.000Z"));
+
+  r = await call("vega_sync", { file: fixtureProgressFile, hub: TEST_DIR });
+  ok(
+    "vega_sync applies fixture progress events",
+    !r.isError && textOf(r).includes("Reviews applied: 3") && textOf(r).includes("Forgotten (Again / lapses): 1"),
+  );
+  ok(
+    "vega_sync skips unknown card and malformed line",
+    textOf(r).includes("c_unknown_99999") && textOf(r).includes("Malformed lines skipped: 1"),
+  );
+
+  const collAfterSync = JSON.parse(readFileSync(cardsJsonFile, "utf8"));
+  const card1After = collAfterSync.cards.find((c) => c.id === card1Id);
+  const card2After = collAfterSync.cards.find((c) => c.id === card2Id);
+
+  ok(
+    "card 1 state matches ts-fsrs step progression",
+    card1After.fsrs.state === expStep3.nextState.state &&
+      card1After.fsrs.reps === expStep3.nextState.reps &&
+      card1After.fsrs.stability === expStep3.nextState.stability,
+    `Card 1 stability: ${card1After.fsrs.stability}, expected: ${expStep3.nextState.stability}`,
+  );
+  ok(
+    "card 2 state matches ts-fsrs step progression",
+    card2After.fsrs.state === expStep2.nextState.state &&
+      card2After.fsrs.lapses === expStep2.nextState.lapses,
+    `Card 2 lapses: ${card2After.fsrs.lapses}, state: ${card2After.fsrs.state}`,
+  );
+
+  const syncStateFile = join(TEST_DIR, ".vega", "sync-state.json");
+  ok("sync-state.json exists with processed hashes", existsSync(syncStateFile));
+
+  // Test sync idempotency
+  r = await call("vega_sync", { file: fixtureProgressFile, hub: TEST_DIR });
+  ok(
+    "vega_sync is idempotent on rerun",
+    !r.isError && textOf(r).includes("Reviews applied: 0") && textOf(r).includes("Skipped (already synced): 4"),
+  );
+
+  const collAfterRerun = JSON.parse(readFileSync(cardsJsonFile, "utf8"));
+  const card1AfterRerun = collAfterRerun.cards.find((c) => c.id === card1Id);
+  ok(
+    "card 1 state is unchanged on rerun",
+    card1AfterRerun.fsrs.reps === card1After.fsrs.reps &&
+      card1AfterRerun.fsrs.stability === card1After.fsrs.stability,
+  );
+
+  // 4.15 Atomic writes check: no temporary files left in .vega
   const vegaDirFiles = readdirSync(join(TEST_DIR, ".vega"));
   const tmpFiles = vegaDirFiles.filter((f) => f.includes(".tmp."));
   ok("atomic writes clean up temporary files", tmpFiles.length === 0, `files in .vega: ${vegaDirFiles.join(", ")}`);
@@ -496,13 +624,37 @@ try {
 console.log("\n--- CLI Interface Tests ---");
 
 const versionCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "version"], { encoding: "utf8" });
-ok("CLI version prints 0.1.0", versionCli.trim() === "0.1.0", versionCli.trim());
+ok("CLI version prints 0.2.0", versionCli.trim() === "0.2.0", versionCli.trim());
 
 const helpCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "help"], { encoding: "utf8" });
-ok("CLI help lists commands", helpCli.includes("due") && helpCli.includes("review") && helpCli.includes("stats") && helpCli.includes("candidates"));
+ok(
+  "CLI help lists commands",
+  helpCli.includes("due") &&
+    helpCli.includes("review") &&
+    helpCli.includes("stats") &&
+    helpCli.includes("candidates") &&
+    helpCli.includes("session") &&
+    helpCli.includes("sync"),
+);
 
-const guideCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "guide", "rules"], { encoding: "utf8" });
-ok("CLI guide rules prints rules", guideCli.includes("One Idea per Card") && guideCli.includes("Dùng Cloze"));
+const guideCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "guide", "session"], { encoding: "utf8" });
+ok("CLI guide session prints session guide", guideCli.includes("vega_session") && guideCli.includes("progress.jsonl"));
+
+const sessionCli = execFileSync(
+  process.execPath,
+  [join(ROOT, "dist", "vega.mjs"), "session", "--hub", TEST_DIR, "--no-build", "--json"],
+  { encoding: "utf8" },
+);
+const parsedSessionCli = JSON.parse(sessionCli);
+ok("CLI session --json outputs session result", parsedSessionCli.deck_path && parsedSessionCli.session_dir);
+
+const syncCli = execFileSync(
+  process.execPath,
+  [join(ROOT, "dist", "vega.mjs"), "sync", fixtureProgressFile, "--hub", TEST_DIR, "--json"],
+  { encoding: "utf8" },
+);
+const parsedSyncCli = JSON.parse(syncCli);
+ok("CLI sync --json outputs sync result", parsedSyncCli.skipped_duplicates >= 3 && parsedSyncCli.reviews_applied === 0);
 
 const candidatesCli = execFileSync(
   process.execPath,
@@ -536,3 +688,4 @@ try {
 
 console.log(failed ? `\n${failed} check(s) failed.` : "\nAll end-to-end checks passed.");
 process.exit(failed ? 1 : 0);
+

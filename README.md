@@ -38,42 +38,69 @@ Vega employs **FSRS (Free Spaced Repetition Scheduler)** via the `ts-fsrs` packa
 
 1. **The agent writes good cards, Vega schedules them:** Vega proposes candidates from materials; the agent refines them following card rules (one atomic idea per card, cloze for terms, keep memory hooks, Vietnamese learner text).
 2. **Proven algorithm:** Uses `ts-fsrs` (v5.4.2, MIT) bundled into a single standalone executable.
-3. **Clean storage:** The entire collection resides in `VEGA_HUB/.vega/` (default `D:/02_Learning_Knowledge/.vega/`) with only `cards.json` and `reviews.jsonl` using atomic writes.
-4. **Origin fidelity:** Every card preserves its origin (source path and locator such as "slide 12", "fact F1", "station 7") so the learner can trace back to the lesson.
+3. **Clean storage:** The entire collection resides in `VEGA_HUB/.vega/` (default `D:/02_Learning_Knowledge/.vega/`) with only `cards.json`, `reviews.jsonl`, `sync-state.json`, and the fixed `session/` folder using atomic writes.
+4. **Origin fidelity & Lesson links:** Every card preserves its origin (source path and locator such as "slide 12", "fact F1", "station 7") and calculates relative links back to the original lesson deck.
 
 ---
 
-## Tools & CLI Reference
+## Aurora Slides Integration & Review Sessions
+
+Vega turns daily spaced-repetition queues into interactive **Aurora Slides** review decks:
+
+1. **Daily Session Deck (`vega_session`):** Generates `<hub>/.vega/session/deck.json` containing a Title slide with subject breakdown, interactive `srs` slides for each card, and a closing Summary slide. The single `session/` directory is reused every day to prevent cluster waste on exFAT drives.
+2. **Aurora `srs` Slides:** Flip with `Space`/`Enter`, rate recall using keys `1` (Again), `2` (Hard), `3` (Good), `4` (Easy), and jump to source lessons via relative origin links.
+3. **Progress Events (`progress.jsonl`):** Interactive reviews emit `"card"` events:
+   ```json
+   {"v":1, "t":"2026-10-11T09:00:00+07:00", "course":null, "lesson":"session", "deck":"Ôn tập hôm nay", "slide":2, "type":"card", "card":"c_12345", "rating":"good", "ms":3200}
+   ```
+4. **Automatic Idempotent Sync (`vega_sync`):** Synchronizes progress events into FSRS memory states in chronological order, recording event hashes in `sync-state.json` to prevent duplicates.
+
+---
+
+## Tools, Prompts & CLI Reference
 
 ### Tools (MCP Server over Stdio)
 
-- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, and origin guide.
+- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, session integration, and origin guide (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`).
 - `vega_candidates { path, from?, subject? }`: Deterministic candidate extraction from Polaris `facts.json`, `errorlog.md`, or Aurora `deck.json`.
 - `vega_add { cards, hub? }`: Validate, de-duplicate (same origin + front), assign IDs, and initialize FSRS states.
 - `vega_edit { id, patch, hub? }`: Edit card front, back, hint, hook, tags, or subject.
 - `vega_suspend { id, suspended?, hub? }`: Pause or resume cards from due queues.
 - `vega_delete { id, hub? }`: Soft delete a card (removes from active collection and logs to review history).
 - `vega_due { subject?, limit?, new_limit?, date?, hub? }`: Today's review queue (overdue first, due today, capped new cards) and 7-day workload forecast.
+- `vega_session { date?, limit?, new_limit?, subject?, build?, hub? }`: Generate today's review session deck into `.vega/session/` and build with Aurora CLI.
+- `vega_sync { file?, hub? }`: Synchronize review ratings from `.vega/session/progress.jsonl` or exported progress file into FSRS idempotently.
 - `vega_review { id, rating, ms?, date?, via?, hub? }`: Submit review rating (`again`, `hard`, `good`, `easy`) and advance FSRS memory state.
 - `vega_stats { subject?, date?, hub? }`: View cards by state, today's reviews, 30-day true retention rate, leech cards (`lapses >= 6`), and workload forecast.
+
+### Prompts
+
+- `review_today { date?, subject?, hub? }`: Guided daily review workflow (`vega_sync` -> `vega_session` -> interactive study -> `vega_sync`).
+- `make_cards { path, subject?, hub? }`: Standardized card authoring workflow (`vega_candidates` -> 6 card rules rewrite -> `vega_add`).
 
 ### CLI Usage
 
 ```bash
+# Generate today's review session deck
+node dist/vega.mjs session
+
+# Sync ratings from Aurora session progress into FSRS
+node dist/vega.mjs sync
+
 # View today's queue
 node dist/vega.mjs due
 
-# Rate a card
+# Rate a card directly
 node dist/vega.mjs review c_12345 good
 
-# Check statistics
+# Check statistics & true retention
 node dist/vega.mjs stats
 
 # Extract candidates from an Aurora deck or Polaris file
 node dist/vega.mjs candidates path/to/deck.json
 
 # View documentation
-node dist/vega.mjs guide rules
+node dist/vega.mjs guide session
 ```
 
 ---

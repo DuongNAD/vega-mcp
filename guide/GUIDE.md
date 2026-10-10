@@ -84,5 +84,36 @@ Aurora deck.json (notebook/quiz/palace)
 
 1. **Khám phá ứng viên (Discovery):** Gọi `vega_candidates` với đường dẫn file `facts.json`, `errorlog.md` hoặc `deck.json`.
 2. **Biên tập & Nạp thẻ (Authoring):** Agent rà soát, tinh chỉnh câu chữ theo quy tắc soạn thẻ, sau đó gọi `vega_add` để thêm vào bộ sưu tập.
-3. **Phiên học hàng ngày (Daily Review):** Gọi `vega_due` để lấy danh sách thẻ cần học hôm nay. Sau khi người học trả lời, gọi `vega_review` để cập nhật trạng thái FSRS và ghi log vào `reviews.jsonl`.
-4. **Giám sát & Tối ưu (Monitoring):** Định kỳ gọi `vega_stats` để theo dõi tải học tập 7 ngày tới và phát hiện các thẻ bị quên từ 6 lần trở lên (`lapses >= 6`) để tái cấu trúc.
+3. **Phiên học hàng ngày với Aurora Deck (Daily Review):** Gọi `vega_session` (hoặc prompt `review_today`) để xuất bộ slide ôn tập vào `.vega/session/deck.json`. Người học mở bài ôn tập qua `aurora_preview`, lật thẻ và đánh giá qua các phím số 1-4.
+4. **Tự động đồng bộ kết quả (Sync to FSRS):** Gọi `vega_sync` để nạp toàn bộ đánh giá từ `progress.jsonl` vào thuật toán FSRS một cách bất biến (idempotent).
+5. **Giám sát & Tối ưu (Monitoring):** Định kỳ gọi `vega_stats` để theo dõi tải học tập 7 ngày tới và phát hiện các thẻ bị quên từ 6 lần trở lên (`lapses >= 6`) để tái cấu trúc.
+
+---
+
+## 4. Tích Hợp Aurora Slides & Phiên Ôn Tập Hàng Ngày (Sessions & Sync)
+
+### Cơ chế một thư mục cố định (`.vega/session/`)
+Để tối ưu hóa không gian lưu trữ và tránh phân mảnh trên ổ đĩa exFAT (cluster 512 KB), Vega không tạo thư mục riêng cho từng ngày mà sử dụng duy nhất một thư mục:
+```
+<hub>/.vega/
+├── cards.json         # Bộ thẻ đang hoạt động và trạng thái FSRS
+├── reviews.jsonl      # Nhật ký ôn tập lũy tiến (append-only)
+├── sync-state.json    # Bảng băm các sự kiện đã đồng bộ (Idempotency)
+└── session/           # Thư mục bài ôn tập cố định
+    ├── deck.json      # Bộ slide ôn tập hôm nay
+    ├── index.html     # Giao diện chạy độc lập do Aurora biên dịch
+    └── progress.jsonl # Sự kiện đánh giá thẻ từ giao diện
+```
+
+### Cấu trúc bài ôn tập Aurora SRS
+- **Title Slide:** Tiêu đề "Ôn tập hôm nay · `<date>`", phân bổ số lượng thẻ theo từng chủ đề.
+- **SRS Slide (`type: "srs"`):** Mặt trước câu hỏi (`front`), mặt sau đáp án (`back`), gợi ý (`hint`), mỏ neo trí nhớ (`hook`), và liên kết tương đối trỏ về bài học gốc (`origin`).
+- **Summary Slide:** Bảng tổng kết số thẻ hoàn thành và lời nhắc đồng bộ.
+
+### Phím tắt khi học với Aurora SRS
+- **Space / Enter:** Lật mặt thẻ (Flip card).
+- **1:** Again (Quên / Cần học lại ngay).
+- **2:** Hard (Nhớ chật vật).
+- **3:** Good (Nhớ chuẩn xác).
+- **4:** Easy (Nhớ tức thì).
+

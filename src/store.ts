@@ -6,11 +6,13 @@ import {
   CardPatchSchema,
   CardSchema,
   ReviewLogEntrySchema,
+  SyncStateSchema,
   VegaCollectionSchema,
   type Card,
   type CardInput,
   type CardPatch,
   type ReviewLogEntry,
+  type SyncState,
   type VegaCollection,
 } from "./schema.js";
 import {
@@ -232,3 +234,31 @@ export async function deleteCard(id: string, hub?: string): Promise<{ deleted: C
   await saveCollection(collection, hub);
   return { deleted };
 }
+
+export async function loadSyncState(hub?: string): Promise<SyncState> {
+  const p = vegaPaths(hub);
+  const data = await readJson<unknown>(p.syncStateJson);
+  if (!data) {
+    return {
+      version: 1,
+      processed_hashes: [],
+    };
+  }
+  const parsed = SyncStateSchema.safeParse(data);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  const obj = data as { version?: number; last_sync?: string; processed_hashes?: string[] };
+  return {
+    version: obj.version ?? 1,
+    last_sync: obj.last_sync,
+    processed_hashes: Array.isArray(obj.processed_hashes) ? obj.processed_hashes : [],
+  };
+}
+
+export async function saveSyncState(syncState: SyncState, hub?: string): Promise<void> {
+  const p = vegaPaths(hub);
+  const validated = SyncStateSchema.parse(syncState);
+  await writeJson(p.syncStateJson, validated);
+}
+
