@@ -1,0 +1,20 @@
+{
+  "name": "vega-mcp",
+  "version": "0.1.0",
+  "description": "Vega MCP: Adaptive spaced repetition memory engine (FSRS) across Polaris & Aurora learning ecosystems",
+  "type": "module",
+  "bin": {
+    "vega": "./dist/vega.mjs"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/build.mjs --check",
+    "test": "node scripts/e2e.mjs"
+  },
+  "engines": {
+    "node": ">= 22.4"
+  },
+  "author": "DuongNAD (https://github.com/DuongNAD)",
+  "license": "MIT",
+  "repository": "https://github.com/DuongNAD/vega-mcp"
+}

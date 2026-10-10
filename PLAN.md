@@ -20,7 +20,7 @@ learner studies with memory anchors and recall walks; Vega turns those anchors i
 1. The agent writes good cards, Vega schedules them. Vega proposes candidates from the learner's materials; the agent
    rewrites them following card-writing rules (one idea per card, cloze for terms, no unordered lists to recite, keep
    the memory hook, Vietnamese learner text) and the learner can veto.
-2. Proven algorithm, not a home-made one: FSRS through the `ts-fsrs` package (MIT), bundled into the single dist file;
+2. Proven algorithm, not a home-made one: FSRS through the `ts-fsrs` package (v5.4.2, MIT), bundled into the single dist file;
    default parameters and a desired retention of 0.9 (configurable); the optimizer is a later phase.
 3. Few files: the collection lives in one folder (default <hub>/.vega/, hub = VEGA_HUB or D:/02_Learning_Knowledge):
    cards.json (cards and their FSRS state) and reviews.jsonl (append-only review log); atomic writes; no micro-files
@@ -35,7 +35,7 @@ learner studies with memory anchors and recall walks; Vega turns those anchors i
 Card: `{id, subject, deck?, kind: basic | cloze | palace | reverse, front, back, hint?, hook? (memory anchor),
 origin: {kind: polaris-fact | polaris-errorlog | aurora-notebook | aurora-quiz | aurora-flashcard | aurora-palace |
 manual, path, locator?}, tags, created, suspended?, fsrs: {due, stability, difficulty, elapsed_days, scheduled_days,
-reps, lapses, state, last_review}}`.
+reps, lapses, state, last_review, learning_steps}}`.
 Review log line: `{t, card, rating: again | hard | good | easy, state_before, due_before, elapsed_days, ms?, via:
 tool | aurora}`.
 
@@ -66,4 +66,4 @@ review updates state and appends the log; stats on a fixture log; atomic writes;
 folder is written.
 
 ## Status
-- 2026-10-11: plan written; v0.1 to be built.
+- 2026-10-11: v0.1 built and tested (9 tools, CLI, FSRS with ts-fsrs@5.4.2, deterministic candidate extraction with origins, atomic writes, e2e passing).
