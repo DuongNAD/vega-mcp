@@ -110,6 +110,7 @@ node dist/vega.mjs guide stats
 
 ## Lịch Sử Phiên Bản (Version History)
 
+- **v0.2.2**: Định dạng công thức toán KaTeX và mặt trước cụ thể cho trang vở Aurora notebook (thẻ công thức bọc `$$...$$` để Aurora hiển thị chuẩn bằng KaTeX trong phiên ôn tập; mặt trước bọc vế trái trong `$...$`; tách dòng nhiều công thức ngăn cách bởi `\quad`, `\qquad` hoặc `;` thành từng thẻ riêng biệt; dòng quy tắc và mỏ neo dùng định dạng "Quy tắc cốt lõi · <tiểu mục>" / "Mỏ neo trí nhớ · <tiểu mục>"; khử trùng lặp đảm bảo không có 2 thẻ cùng mặt trước trong một deck); cập nhật quy tắc soạn thẻ trong cẩm nang hướng dẫn.
 - **v0.2.1**: Tính toán và báo cáo Tỉ lệ nhớ thực tế (True Retention) chuẩn hóa theo FSRS / Anki: chỉ tính trên các thẻ ở trạng thái Review (`passed / (passed + failed)`); loại trừ bước học (Learning) và học lại (Relearning); bổ sung chỉ số "Learning-step again" đếm riêng lượt again khi mới học thẻ; bổ sung chủ đề hướng dẫn `stats`; tương thích ngược với các file nhật ký cũ không lưu trường state_before.
 - **v0.2.0**: Tích hợp phiên ôn tập Aurora Slides SRS (`vega_session`), tự động đồng bộ bất biến từ `progress.jsonl` (`vega_sync`), tối ưu hóa tái sử dụng thư mục `.vega/session/`, thêm prompt `review_today` và `make_cards`.
 - **v0.1.0**: Bản phát hành đầu tiên với 9 MCP tools, thuật toán FSRS qua `ts-fsrs`, trích xuất tất định ứng viên từ Polaris facts/error logs và Aurora decks, lưu trữ nguyên tử trong `.vega/`.

@@ -35,7 +35,14 @@ export function getGuideTopic(topic?: string): string {
 
 5. **Ngôn ngữ học viên (Vietnamese Learner Text):** Thẻ hướng tới người học bằng tiếng Việt chuẩn mực, giữ thuật ngữ chuyên ngành quốc tế chuẩn xác.
 
-6. **Trung thực với nguồn (Origin Fidelity):** Tuyệt đối không bịa đặt dữ kiện ngoài tài liệu nguồn. Mọi thẻ phải mang origin trỏ tới file và vị trí cụ thể.`;
+6. **Trung thực với nguồn (Origin Fidelity):** Tuyệt đối không bịa đặt dữ kiện ngoài tài liệu nguồn. Mọi thẻ phải mang origin trỏ tới file và vị trí cụ thể.
+
+7. **Mặt trước cụ thể, không mơ hồ (Specific Fronts):** Mặt trước thẻ phải nêu rõ đích danh công thức, khái niệm hoặc quy tắc được hỏi để người học nhận diện ngay.
+   - Tránh tuyệt đối mặt trước chung chung mơ hồ như "Công thức (Trang vở...)".
+   - Với công thức toán học (\`= <LaTeX>\`), biểu thức toán học đặt trong \`$...$\` (nội dòng) hoặc \`$$...$$\` (khối) để Aurora hiển thị chuẩn xác bằng KaTeX. Tận dụng tiêu đề tiểu mục (\`# \`), vế trái công thức (ví dụ: $\\hat{y}$, $J(w)$, $w^*$), hoặc từ ngữ xung quanh để tạo mặt trước rõ nghĩa (ví dụ: "Công thức hồi quy tuyến tính $\\hat{\\mathbf{y}}$", "Viết công thức cho $J(w)$").
+   - Khi dòng ghi chép chứa nhiều công thức phân tách bởi \`\\quad\`, \`\\qquad\` hoặc \`;\` (mỗi phần có dấu quan hệ riêng), tách thành từng thẻ riêng biệt (nguyên tử hóa) kèm mặt sau \`$$<formula>$$\`.
+   - Với dòng quy tắc (\`! \`) và mỏ neo (\`@ \`), khi có tiểu mục dùng "Quy tắc cốt lõi · <tiểu mục>" / "Mỏ neo trí nhớ · <tiểu mục>" ngắn gọn mà không lặp lại tên slide.
+   - Trong cùng một bộ thẻ (deck), không được có 2 thẻ trùng mặt trước (phân biệt bằng tiểu mục hoặc chỉ số thứ tự).`;
 
     case "fsrs":
       return `# FSRS in Plain Words (Nguyên Lý FSRS Dễ Hiểu)

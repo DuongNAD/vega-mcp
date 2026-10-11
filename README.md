@@ -108,6 +108,7 @@ node dist/vega.mjs guide stats
 
 ## Version History
 
+- **v0.2.2**: Specific card fronts and KaTeX math delimiters for Aurora notebook slides (formulas get `$$...$$` delimiters for display KaTeX rendering in Aurora review sessions; fronts wrap formula LHS in `$...$`; multi-formula lines separated by `\quad`, `\qquad`, or `;` yield one card per formula; rules and hooks use "Quy tắc cốt lõi · <sub-heading>" / "Mỏ neo trí nhớ · <sub-heading>"; deck-level deduplication ensures unique fronts across all cards in a deck); guide card rules updated with KaTeX math delimiters and specific fronts guidance.
 - **v0.2.1**: True retention reporting aligned with FSRS / Anki standard: only reviews of cards in Review state count towards retention (`passed / (passed + failed)`); learning and relearning steps are excluded; separate counter for learning-step agains in `vega_stats` and `vega_sync`; guide topic `stats`; backward-compatible parsing and derivation for legacy review logs without stored states.
 - **v0.2.0**: Integrated Aurora Slides SRS review sessions (`vega_session`), automated idempotent sync from `progress.jsonl` (`vega_sync`), fixed `.vega/session/` directory reuse, prompts `review_today` and `make_cards`.
 - **v0.1.0**: Initial release with 9 MCP tools, FSRS scheduling via `ts-fsrs`, deterministic candidate extraction from Polaris facts/error logs and Aurora decks, atomic persistence in `.vega/`.

@@ -247,6 +247,111 @@ ok(
   quizCandidate?.back?.slice(0, 60),
 );
 
+// 3.1b Specific notebook candidate fronts (v0.2.2)
+const specificDeckPath = join(TEST_DIR, "specific_formula_deck.json");
+const specificDeck = {
+  title: "Toán học và Học máy cơ bản",
+  slides: [
+    {
+      type: "notebook",
+      title: "Hồi quy tuyến tính",
+      lines: [
+        "= \\hat{y} = \\sigma(w^T x + b)",
+        "# 1. Hàm mất mát J(w) (MSE)",
+        "= J(w) = \\frac{1}{2m} \\sum_{i=1}^m (h_w(x^{(i)}) - y^{(i)})^2",
+        "# 2. Tối ưu hóa trọng số w*",
+        "= w^* = (X^T X)^{-1} X^T y",
+        "# 3. Quy tắc huấn luyện",
+        "! Chuẩn hóa dữ liệu trước khi train",
+        "! Giới hạn số vòng lặp tối đa",
+        "@ Kim la bàn hội tụ",
+      ],
+    },
+  ],
+};
+writeFileSync(specificDeckPath, JSON.stringify(specificDeck, null, 2), "utf8");
+const specificCandidates = await vegaLib.extractCandidates(specificDeckPath);
+
+const formulaCards = specificCandidates.filter((c) => c.tags?.includes("formula"));
+const distinctFronts = new Set(formulaCards.map((c) => c.front));
+const formulaUnderNone = formulaCards.find((c) => c.back.includes("\\hat{y}"));
+const formulaSub1 = formulaCards.find((c) => c.back.includes("J(w)"));
+const formulaSub2 = formulaCards.find((c) => c.back.includes("w^*"));
+
+ok(
+  "a fixture notebook with two formulas under different sub-headings and one under none yields three distinct, specific fronts",
+  formulaCards.length === 3 &&
+    distinctFronts.size === 3 &&
+    formulaUnderNone?.front === "Viết công thức cho $\\hat{y}$" &&
+    formulaSub1?.front === "Công thức hàm mất mát J(w) (MSE)" &&
+    formulaSub2?.front.toLowerCase().includes("tối ưu hóa"),
+  formulaCards.map((c) => c.front).join(" | "),
+);
+
+const ruleCards = specificCandidates.filter((c) => c.tags?.includes("rule"));
+const hookCards = specificCandidates.filter((c) => c.tags?.includes("anchor"));
+ok(
+  "notebook rule and hook candidates use sub-heading context without repeating slide title",
+  ruleCards.length === 2 &&
+    ruleCards[0].front !== ruleCards[1].front &&
+    ruleCards[0].front === "Quy tắc cốt lõi · Quy tắc huấn luyện" &&
+    ruleCards[1].front === "Quy tắc cốt lõi · Quy tắc huấn luyện (2)" &&
+    hookCards[0]?.front === "Mỏ neo trí nhớ · Quy tắc huấn luyện",
+  ruleCards.map((c) => c.front).join(" | "),
+);
+
+const allSpecificFronts = specificCandidates.map((c) => c.front);
+ok(
+  "all candidate fronts in deck are unique",
+  new Set(allSpecificFronts).size === allSpecificFronts.length,
+  `Total: ${allSpecificFronts.length}, Unique: ${new Set(allSpecificFronts).size}`,
+);
+
+// 3.1c Multi-formula splitting and KaTeX math delimiters (v0.2.2)
+const splitDeckPath = join(TEST_DIR, "split_formula_deck.json");
+const splitDeck = {
+  title: "Machine Learning Math",
+  slides: [
+    {
+      type: "notebook",
+      title: "Hồi quy tuyến tính",
+      lines: [
+        "# OLS & Hàm mất mát",
+        "= \\hat{y} = Xw + b, \\quad J(w) = \\frac{1}{n}\\sum (y - \\hat{y})^2",
+        "# Quy tắc OLS",
+        "! Không giải trực tiếp nghịch đảo ma trận suy biến",
+        "@ Chiếc compa đo góc vuông",
+      ],
+    },
+  ],
+};
+writeFileSync(splitDeckPath, JSON.stringify(splitDeck, null, 2), "utf8");
+const splitCandidates = await vegaLib.extractCandidates(splitDeckPath);
+
+const splitFormulas = splitCandidates.filter((c) => c.tags?.includes("formula"));
+ok(
+  "multi-formula line gives two formula candidates",
+  splitFormulas.length === 2,
+  `Got ${splitFormulas.length} formula cards`,
+);
+
+const splitYHat = splitFormulas.find((c) => c.front.includes("$\\hat{y}$"));
+const splitJw = splitFormulas.find((c) => c.front.includes("$J(w)$"));
+ok(
+  "split formula candidate fronts contain $\\hat{y}$ and $J(w)$ and backs start with $$",
+  Boolean(splitYHat && splitJw && splitYHat.back.startsWith("$$") && splitJw.back.startsWith("$$")),
+  `y_hat: ${splitYHat?.front} -> ${splitYHat?.back} | Jw: ${splitJw?.front} -> ${splitJw?.back}`,
+);
+
+const splitRules = splitCandidates.filter((c) => c.tags?.includes("rule"));
+const splitHooks = splitCandidates.filter((c) => c.tags?.includes("anchor"));
+ok(
+  "split notebook rule and hook fronts follow point 3 (Quy tắc cốt lõi · <sub-heading>)",
+  splitRules[0]?.front === "Quy tắc cốt lõi · Quy tắc OLS" &&
+    splitHooks[0]?.front === "Mỏ neo trí nhớ · Quy tắc OLS",
+  `Rule: ${splitRules[0]?.front} | Hook: ${splitHooks[0]?.front}`,
+);
+
 // 3.2 Extract from Polaris facts.json
 const factsCandidates = await vegaLib.extractCandidates(tempFactsPath);
 ok(
@@ -303,7 +408,7 @@ const fixtureProgressFile = join(TEST_DIR, "fixture_progress.jsonl");
 try {
   // 4.1 Server Identification and Instructions
   const info = client.getServerVersion();
-  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.2.1", `${info?.name} ${info?.version}`);
+  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.2.2", `${info?.name} ${info?.version}`);
 
   const instructions = client.getInstructions() ?? "";
   ok(
@@ -547,6 +652,47 @@ try {
   const vegaSubdirs = readdirSync(join(TEST_DIR, ".vega")).filter((f) => f.startsWith("session"));
   ok("only one fixed session folder exists in .vega", vegaSubdirs.length === 1 && vegaSubdirs[0] === "session");
 
+  // 4.13b Formula card in session deck: KaTeX delimiters & HTML render
+  const formulaHub = join(TEST_DIR, "formula_session_hub");
+  mkdirSync(formulaHub, { recursive: true });
+  await vegaLib.addCards(
+    [
+      {
+        subject: "Học máy",
+        deck: "02-m2-1-hoi-quy",
+        kind: "basic",
+        front: "Công thức hồi quy tuyến tính $\\hat{\\mathbf{y}}$",
+        back: "$$\\hat{\\mathbf{y}} = X\\mathbf{w} + b$$",
+        origin: {
+          kind: "aurora-notebook",
+          path: splitDeckPath,
+          locator: "slide 1 (notebook)",
+        },
+        tags: ["ml", "formula"],
+      },
+    ],
+    formulaHub,
+  );
+
+  await vegaLib.createSessionDeck({ hub: formulaHub, date: "2026-10-11", build: true });
+  const fSessionDeckPath = join(formulaHub, ".vega", "session", "deck.json");
+  const fSessionDeck = JSON.parse(readFileSync(fSessionDeckPath, "utf8"));
+  const fSlide = fSessionDeck.slides.find((s) => s.type === "srs" && s.back?.startsWith("$$"));
+  ok(
+    "session deck.json back keeps the $$ delimiters",
+    Boolean(fSlide && fSlide.back === "$$\\hat{\\mathbf{y}} = X\\mathbf{w} + b$$"),
+    fSlide?.back,
+  );
+
+  const fSessionHtmlPath = join(formulaHub, ".vega", "session", "index.html");
+  if (existsSync(fSessionHtmlPath)) {
+    const htmlContent = readFileSync(fSessionHtmlPath, "utf8");
+    ok(
+      "built session HTML contains KaTeX output (class katex)",
+      htmlContent.includes('class="katex"') || htmlContent.includes("katex"),
+    );
+  }
+
   // 4.14 vega_sync
   const fixtureLines = [
     JSON.stringify({ v: 1, t: "2026-10-11T12:00:00.000Z", course: null, lesson: "session", deck: "Ôn tập", slide: 2, type: "card", card: card1Id, rating: "good", ms: 3000 }),
@@ -669,7 +815,7 @@ try {
 console.log("\n--- CLI Interface Tests ---");
 
 const versionCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "version"], { encoding: "utf8" });
-ok("CLI version prints 0.2.1", versionCli.trim() === "0.2.1", versionCli.trim());
+ok("CLI version prints 0.2.2", versionCli.trim() === "0.2.2", versionCli.trim());
 
 const helpCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "help"], { encoding: "utf8" });
 ok(

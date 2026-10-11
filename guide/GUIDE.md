@@ -61,6 +61,15 @@ Nội dung thẻ người học nhìn thấy phải viết bằng tiếng Việt
 ### Quy tắc 6: Trung thực với nguồn gốc (Origin Fidelity)
 Không được tự sáng tác dữ kiện nằm ngoài nội dung bài học hoặc nguồn tài liệu. Mọi thẻ đều phải mang `origin` chỉ rõ file nguồn và vị trí định vị (slide, fact, errorlog entry).
 
+### Quy tắc 7: Mặt trước cụ thể, không mơ hồ (Specific Fronts)
+Mặt trước của thẻ phải nêu rõ đích danh công thức, khái niệm hoặc quy tắc được kiểm tra để người học nhận diện tức thì:
+- **Tránh mơ hồ:** Tuyệt đối không sinh thẻ có mặt trước mơ hồ như "Công thức (Trang vở...)" hoặc "Công thức (Tên slide)", khiến học viên không thể biết bài học đang hỏi công thức nào.
+- **Quy tắc trích xuất công thức (`= <LaTeX>`):** Biểu thức toán học luôn đặt trong `$...$` (nội dòng) hoặc `$$...$$` (khối) để Aurora hiển thị chuẩn xác bằng KaTeX. Tận dụng tuần tự tiêu đề tiểu mục (`# `) gần nhất, vế trái của biểu thức (ví dụ: $\hat{y}$, $J(w)$, $w^*$), hoặc từ ngữ ngữ cảnh xung quanh để tạo mặt trước rõ nghĩa (ví dụ: `Công thức hồi quy tuyến tính $\hat{\mathbf{y}}$`, `Viết công thức cho $J(w)$`).
+- **Nguyên tử hóa công thức:** Khi một dòng ghi chép chứa nhiều công thức phân tách bởi `\quad`, `\qquad` hoặc `;` (mỗi biểu thức có dấu quan hệ riêng), tách thành từng thẻ riêng biệt kèm mặt sau `$$<formula>$$`.
+- **Ngữ cảnh quy tắc & mỏ neo:** Dòng quy tắc (`! `) và mỏ neo (`@ `) khi có tiểu mục dùng dạng "Quy tắc cốt lõi · <tiểu mục>" / "Mỏ neo trí nhớ · <tiểu mục>" ngắn gọn mà không lặp lại tiêu đề slide.
+- **Tính đơn nhất mặt trước:** Trong cùng một bài học (deck), không bao giờ có 2 thẻ mang mặt trước giống hệt nhau (tự động phân biệt bằng tiểu mục hoặc chỉ số thứ tự `(2)`, `(3)`).
+
+
 ---
 
 ## 3. Quy Trình Vận Hành (Workflows)
