@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { initFsrsState } from "./fsrs.js";
+import { initFsrsState, stepFsrs } from "./fsrs.js";
 import {
   CardInputSchema,
   CardPatchSchema,
@@ -11,6 +11,7 @@ import {
   type Card,
   type CardInput,
   type CardPatch,
+  type FsrsState,
   type ReviewLogEntry,
   type SyncState,
   type VegaCollection,
@@ -20,6 +21,7 @@ import {
   atomicWriteFile,
   generateCardId,
   nowIso,
+  parseDate,
   readJson,
   vegaPaths,
   writeJson,
@@ -84,6 +86,52 @@ export async function appendReviewLog(entry: ReviewLogEntry, hub?: string): Prom
   await atomicAppendFile(p.reviewsJsonl, JSON.stringify(validated));
 }
 
+export function deriveMissingStates(logs: ReviewLogEntry[]): void {
+  const byCard = new Map<string, ReviewLogEntry[]>();
+  for (const log of logs) {
+    if (log.rating === "deleted") continue;
+    let list = byCard.get(log.card);
+    if (!list) {
+      list = [];
+      byCard.set(log.card, list);
+    }
+    list.push(log);
+  }
+
+  for (const [, cardLogs] of byCard) {
+    cardLogs.sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+    let simState: FsrsState | null = null;
+
+    for (const log of cardLogs) {
+      if (log.rating === "deleted") continue;
+
+      if (log.state_before !== undefined) {
+        if (simState === null) {
+          const reviewDate = parseDate(log.t);
+          simState = initFsrsState(reviewDate);
+          simState.state = log.state_before;
+        } else {
+          simState.state = log.state_before;
+        }
+        try {
+          simState = stepFsrs(simState, log.rating, parseDate(log.t)).nextState;
+        } catch {
+          simState = null;
+        }
+      } else {
+        if (simState !== null) {
+          log.state_before = simState.state;
+          try {
+            simState = stepFsrs(simState, log.rating, parseDate(log.t)).nextState;
+          } catch {
+            simState = null;
+          }
+        }
+      }
+    }
+  }
+}
+
 export async function readReviewLogs(hub?: string): Promise<ReviewLogEntry[]> {
   const p = vegaPaths(hub);
   if (!existsSync(p.reviewsJsonl)) {
@@ -100,6 +148,7 @@ export async function readReviewLogs(hub?: string): Promise<ReviewLogEntry[]> {
       // Skip invalid JSON log lines
     }
   }
+  deriveMissingStates(logs);
   return logs;
 }
 

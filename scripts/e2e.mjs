@@ -303,7 +303,7 @@ const fixtureProgressFile = join(TEST_DIR, "fixture_progress.jsonl");
 try {
   // 4.1 Server Identification and Instructions
   const info = client.getServerVersion();
-  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.2.0", `${info?.name} ${info?.version}`);
+  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.2.1", `${info?.name} ${info?.version}`);
 
   const instructions = client.getInstructions() ?? "";
   ok(
@@ -509,7 +509,13 @@ try {
 
   // 4.12 vega_stats
   r = await call("vega_stats", { date: "2026-10-11", hub: TEST_DIR });
-  ok("vega_stats calculates stats", !r.isError && textOf(r).includes("Reviews Today: 2") && textOf(r).includes("30-Day True Retention:"));
+  ok(
+    "vega_stats calculates stats",
+    !r.isError &&
+      textOf(r).includes("Reviews Today: 2") &&
+      textOf(r).includes("True retention (30 days): n/a") &&
+      textOf(r).includes("Learning-step again today: 1"),
+  );
 
   // 4.13 vega_session
   r = await call("vega_session", { date: "2026-10-11", hub: TEST_DIR, build: false });
@@ -564,7 +570,7 @@ try {
   r = await call("vega_sync", { file: fixtureProgressFile, hub: TEST_DIR });
   ok(
     "vega_sync applies fixture progress events",
-    !r.isError && textOf(r).includes("Reviews applied: 3") && textOf(r).includes("Forgotten (Again / lapses): 1"),
+    !r.isError && textOf(r).includes("Reviews applied: 3") && textOf(r).includes("Learning-step again: 1"),
   );
   ok(
     "vega_sync skips unknown card and malformed line",
@@ -612,6 +618,45 @@ try {
   const tmpFiles = vegaDirFiles.filter((f) => f.includes(".tmp."));
   ok("atomic writes clean up temporary files", tmpFiles.length === 0, `files in .vega: ${vegaDirFiles.join(", ")}`);
 
+  // 4.16 FSRS True Retention & Legacy Log Support (v0.2.1)
+  console.log("\n--- Testing FSRS True Retention & Legacy Logs (v0.2.1) ---");
+  const retentionTestDir = join(TEST_DIR, "retention_spec5");
+  mkdirSync(join(retentionTestDir, ".vega"), { recursive: true });
+
+  const fixtureLogLines = [
+    // 1. New card rated again then good (learning steps, not in Review state)
+    JSON.stringify({ t: "2026-10-11T09:00:00.000Z", card: "c_new_card", rating: "again", state_before: 0, due_before: "2026-10-11T09:00:00.000Z", elapsed_days: 0, via: "tool" }),
+    JSON.stringify({ t: "2026-10-11T09:10:00.000Z", card: "c_new_card", rating: "good", state_before: 1, due_before: "2026-10-11T09:10:00.000Z", elapsed_days: 0, via: "tool" }),
+    // 2. Review-state card rated good (passed review)
+    JSON.stringify({ t: "2026-10-11T09:20:00.000Z", card: "c_rev_good", rating: "good", state_before: 2, due_before: "2026-10-11T09:20:00.000Z", elapsed_days: 3, via: "tool" }),
+    // 3. Another review-state card rated again (failed review / lapse)
+    JSON.stringify({ t: "2026-10-11T09:30:00.000Z", card: "c_rev_again", rating: "again", state_before: 2, due_before: "2026-10-11T09:30:00.000Z", elapsed_days: 5, via: "tool" }),
+    // 4. Old lines without stored state_before, due_before, or elapsed_days
+    JSON.stringify({ t: "2026-10-11T09:40:00.000Z", card: "c_legacy_card", rating: "good" }),
+  ];
+  writeFileSync(join(retentionTestDir, ".vega", "reviews.jsonl"), fixtureLogLines.join("\n") + "\n", "utf8");
+
+  // Call vega_stats for retentionTestDir
+  r = await call("vega_stats", { date: "2026-10-11", hub: retentionTestDir });
+  ok("vega_stats returns true retention 50% (1/2)", !r.isError && textOf(r).includes("True retention (30 days): 50% (1/2)"), textOf(r));
+  ok("vega_stats reports learning agains 1", !r.isError && textOf(r).includes("Learning-step again today: 1"), textOf(r));
+
+  // Verify that old lines without stored state still load into review logs
+  const loadedLogs = await vegaLib.readReviewLogs(retentionTestDir);
+  const legacyEntry = loadedLogs.find((l) => l.card === "c_legacy_card");
+  ok("old lines without stored state still load", Boolean(legacyEntry && legacyEntry.rating === "good"), `Loaded ${loadedLogs.length} logs`);
+
+  // Verify vega_stats when there are no review-state cards (shows "n/a")
+  const noReviewHub = join(TEST_DIR, "no_review_hub");
+  mkdirSync(join(noReviewHub, ".vega"), { recursive: true });
+  writeFileSync(
+    join(noReviewHub, ".vega", "reviews.jsonl"),
+    JSON.stringify({ t: "2026-10-11T09:00:00.000Z", card: "c_new_1", rating: "again", state_before: 0, due_before: "2026-10-11T09:00:00.000Z", elapsed_days: 0, via: "tool" }) + "\n",
+    "utf8",
+  );
+  r = await call("vega_stats", { date: "2026-10-11", hub: noReviewHub });
+  ok("vega_stats shows n/a when no review-state reviews exist", !r.isError && textOf(r).includes("True retention (30 days): n/a"), textOf(r));
+
 } catch (e) {
   failed++;
   console.log(`FAIL unexpected error: ${e?.stack ?? e}`);
@@ -624,7 +669,7 @@ try {
 console.log("\n--- CLI Interface Tests ---");
 
 const versionCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "version"], { encoding: "utf8" });
-ok("CLI version prints 0.2.0", versionCli.trim() === "0.2.0", versionCli.trim());
+ok("CLI version prints 0.2.1", versionCli.trim() === "0.2.1", versionCli.trim());
 
 const helpCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "help"], { encoding: "utf8" });
 ok(
@@ -639,6 +684,9 @@ ok(
 
 const guideCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "guide", "session"], { encoding: "utf8" });
 ok("CLI guide session prints session guide", guideCli.includes("vega_session") && guideCli.includes("progress.jsonl"));
+
+const guideStatsCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "guide", "stats"], { encoding: "utf8" });
+ok("CLI guide stats prints stats guide", guideStatsCli.includes("True Retention") && guideStatsCli.includes("Learning-step again"));
 
 const sessionCli = execFileSync(
   process.execPath,

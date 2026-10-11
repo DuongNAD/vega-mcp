@@ -30,6 +30,7 @@ Vega employs **FSRS (Free Spaced Repetition Scheduler)** via the `ts-fsrs` packa
 - **Stability ($S$):** Days required for recall probability to drop to target retention (default 90%).
 - **Difficulty ($D$):** Inherent cognitive load on a 1-10 scale.
 - **Retrievability ($R$):** Probability of recall at review time.
+- **True Retention:** Reports retention strictly according to the FSRS/Anki standard: only reviews of cards in the **Review** state count ($\text{passed} / (\text{passed} + \text{failed})$); learning and relearning steps are excluded so initial learning Agains don't artificially depress retention. Initial Agains are tracked separately as "Learning-step again".
 - **Adaptive Intervals:** Easy cards advance rapidly; hard or lapsed cards return sooner.
 
 ---
@@ -61,7 +62,7 @@ Vega turns daily spaced-repetition queues into interactive **Aurora Slides** rev
 
 ### Tools (MCP Server over Stdio)
 
-- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, session integration, and origin guide (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`).
+- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, session integration, origin guide, and collection stats (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`).
 - `vega_candidates { path, from?, subject? }`: Deterministic candidate extraction from Polaris `facts.json`, `errorlog.md`, or Aurora `deck.json`.
 - `vega_add { cards, hub? }`: Validate, de-duplicate (same origin + front), assign IDs, and initialize FSRS states.
 - `vega_edit { id, patch, hub? }`: Edit card front, back, hint, hook, tags, or subject.
@@ -71,7 +72,7 @@ Vega turns daily spaced-repetition queues into interactive **Aurora Slides** rev
 - `vega_session { date?, limit?, new_limit?, subject?, build?, hub? }`: Generate today's review session deck into `.vega/session/` and build with Aurora CLI.
 - `vega_sync { file?, hub? }`: Synchronize review ratings from `.vega/session/progress.jsonl` or exported progress file into FSRS idempotently.
 - `vega_review { id, rating, ms?, date?, via?, hub? }`: Submit review rating (`again`, `hard`, `good`, `easy`) and advance FSRS memory state.
-- `vega_stats { subject?, date?, hub? }`: View cards by state, today's reviews, 30-day true retention rate, leech cards (`lapses >= 6`), and workload forecast.
+- `vega_stats { subject?, date?, hub? }`: View cards by state, today's reviews, learning-step agains, 30-day true retention rate (review-state only), leech cards (`lapses >= 6`), and workload forecast.
 
 ### Prompts
 
@@ -100,8 +101,16 @@ node dist/vega.mjs stats
 node dist/vega.mjs candidates path/to/deck.json
 
 # View documentation
-node dist/vega.mjs guide session
+node dist/vega.mjs guide stats
 ```
+
+---
+
+## Version History
+
+- **v0.2.1**: True retention reporting aligned with FSRS / Anki standard: only reviews of cards in Review state count towards retention (`passed / (passed + failed)`); learning and relearning steps are excluded; separate counter for learning-step agains in `vega_stats` and `vega_sync`; guide topic `stats`; backward-compatible parsing and derivation for legacy review logs without stored states.
+- **v0.2.0**: Integrated Aurora Slides SRS review sessions (`vega_session`), automated idempotent sync from `progress.jsonl` (`vega_sync`), fixed `.vega/session/` directory reuse, prompts `review_today` and `make_cards`.
+- **v0.1.0**: Initial release with 9 MCP tools, FSRS scheduling via `ts-fsrs`, deterministic candidate extraction from Polaris facts/error logs and Aurora decks, atomic persistence in `.vega/`.
 
 ---
 

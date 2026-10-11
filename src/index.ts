@@ -10,7 +10,7 @@
  *   node dist/vega.mjs candidates <f>  -> CLI extract card candidates
  *   node dist/vega.mjs add <f>         -> CLI add cards
  *   node dist/vega.mjs guide [topic]   -> CLI view guide
- *   node dist/vega.mjs version         -> 0.2.0
+ *   node dist/vega.mjs version         -> 0.2.1
  *   node dist/vega.mjs help            -> CLI command list
  */
 import { existsSync, readFileSync } from "node:fs";

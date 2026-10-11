@@ -32,6 +32,7 @@ Vega sử dụng thuật toán **FSRS (Free Spaced Repetition Scheduler)** qua g
 - **Độ ổn định (Stability - $S$):** Số ngày để xác suất nhớ giảm xuống mức mong muốn (mặc định 90%).
 - **Độ khó (Difficulty - $D$):** Thang điểm 1-10 đo độ phức tạp nhận thức của thẻ.
 - **Khả năng truy hồi (Retrievability - $R$):** Xác suất nhớ lại kiến thức tại thời điểm ôn tập.
+- **Tỉ lệ nhớ thực tế (True Retention):** Báo cáo tỉ lệ nhớ theo đúng chuẩn FSRS/Anki: chỉ tính trên các thẻ đang ở trạng thái **Review** trước khi đánh giá ($\text{passed} / (\text{passed} + \text{failed})$); loại trừ các bước học và học lại ban đầu để không hạ thấp retention sai lệch khi mới nạp thẻ. Đánh giá Again ở bước học được đếm riêng ở chỉ số "Learning-step again".
 - **Chu kỳ thích ứng:** Thẻ dễ giãn cách nhanh; thẻ quên (lapse) được củng cố ngay lập tức.
 
 ---
@@ -63,7 +64,7 @@ Vega chuyển đổi hàng đợi ôn tập hàng ngày thành các bộ slide *
 
 ### Công Cụ (MCP Server qua Stdio)
 
-- `vega_guide { topic? }`: Xem hướng dẫn quy tắc soạn thẻ, nguyên lý FSRS, quy trình vận hành, phiên ôn tập và truy xuất nguồn gốc (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`).
+- `vega_guide { topic? }`: Xem hướng dẫn quy tắc soạn thẻ, nguyên lý FSRS, quy trình vận hành, phiên ôn tập, truy xuất nguồn gốc và thống kê ghi nhớ (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`).
 - `vega_candidates { path, from?, subject? }`: Trích xuất tất định ứng viên thẻ từ Polaris `facts.json`, `errorlog.md` hoặc Aurora `deck.json`.
 - `vega_add { cards, hub? }`: Kiểm tra hợp lệ, khử trùng lặp, gán ID và khởi tạo trạng thái FSRS ban đầu.
 - `vega_edit { id, patch, hub? }`: Chỉnh sửa nội dung mặt trước, mặt sau, gợi ý, mỏ neo hoặc thẻ phân loại.
@@ -73,7 +74,7 @@ Vega chuyển đổi hàng đợi ôn tập hàng ngày thành các bộ slide *
 - `vega_session { date?, limit?, new_limit?, subject?, build?, hub? }`: Tạo bộ slide ôn tập hôm nay vào `.vega/session/` và biên dịch với Aurora CLI.
 - `vega_sync { file?, hub? }`: Đồng bộ kết quả đánh giá từ `.vega/session/progress.jsonl` hoặc file xuất vào FSRS một cách bất biến.
 - `vega_review { id, rating, ms?, date?, via?, hub? }`: Đánh giá kết quả ôn tập (`again`, `hard`, `good`, `easy`) và cập nhật trạng thái FSRS.
-- `vega_stats { subject?, date?, hub? }`: Thống kê thẻ theo trạng thái, số lượt ôn hôm nay, tỉ lệ nhớ thực tế 30 ngày, thẻ vướng (`lapses >= 6`) và dự báo khối lượng học.
+- `vega_stats { subject?, date?, hub? }`: Thống kê thẻ theo trạng thái, số lượt ôn hôm nay, số lần again ở bước học, tỉ lệ nhớ thực tế 30 ngày (chỉ tính thẻ Review), thẻ vướng (`lapses >= 6`) và dự báo khối lượng học.
 
 ### Prompts Hướng Dẫn
 
@@ -102,8 +103,16 @@ node dist/vega.mjs stats
 node dist/vega.mjs candidates path/to/deck.json
 
 # Xem cẩm nang hướng dẫn
-node dist/vega.mjs guide session
+node dist/vega.mjs guide stats
 ```
+
+---
+
+## Lịch Sử Phiên Bản (Version History)
+
+- **v0.2.1**: Tính toán và báo cáo Tỉ lệ nhớ thực tế (True Retention) chuẩn hóa theo FSRS / Anki: chỉ tính trên các thẻ ở trạng thái Review (`passed / (passed + failed)`); loại trừ bước học (Learning) và học lại (Relearning); bổ sung chỉ số "Learning-step again" đếm riêng lượt again khi mới học thẻ; bổ sung chủ đề hướng dẫn `stats`; tương thích ngược với các file nhật ký cũ không lưu trường state_before.
+- **v0.2.0**: Tích hợp phiên ôn tập Aurora Slides SRS (`vega_session`), tự động đồng bộ bất biến từ `progress.jsonl` (`vega_sync`), tối ưu hóa tái sử dụng thư mục `.vega/session/`, thêm prompt `review_today` và `make_cards`.
+- **v0.1.0**: Bản phát hành đầu tiên với 9 MCP tools, thuật toán FSRS qua `ts-fsrs`, trích xuất tất định ứng viên từ Polaris facts/error logs và Aurora decks, lưu trữ nguyên tử trong `.vega/`.
 
 ---
 

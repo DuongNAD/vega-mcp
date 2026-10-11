@@ -114,10 +114,14 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   const dateStr = localTodayIso(targetDate);
 
   let cards = collection.cards;
+  let subjectCardIds: Set<string> | null = null;
   if (options.subject && options.subject.trim()) {
     const sub = options.subject.trim().toLowerCase();
     cards = cards.filter((c) => c.subject.toLowerCase() === sub);
+    subjectCardIds = new Set(collection.cards.filter((c) => c.subject.toLowerCase() === sub).map((c) => c.id));
   }
+
+  const targetLogs = subjectCardIds ? reviewLogs.filter((l) => subjectCardIds!.has(l.card)) : reviewLogs;
 
   const byState = {
     new: 0,
@@ -145,22 +149,29 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   }
 
   // Reviews today
-  const reviewsToday = reviewLogs.filter(
+  const todayLogs = targetLogs.filter(
     (l) => l.t.startsWith(dateStr) && l.rating !== "deleted",
+  );
+  const reviewsToday = todayLogs.length;
+
+  // Learning-step again today (ratings of again on cards in New, Learning, or Relearning steps)
+  const learningAgainToday = todayLogs.filter(
+    (l) => l.rating === "again" && (l.state_before === 0 || l.state_before === 1 || l.state_before === 3),
   ).length;
 
-  // True retention over the last 30 days
+  // True retention over the last 30 days: review-state reviews only (state_before === 2)
   const thirtyDaysAgo = new Date(targetDate.getTime() - 30 * 24 * 60 * 60 * 1000);
   const endTarget = endOfDay(targetDate);
 
-  const relevantLogs = reviewLogs.filter((l) => {
+  const relevantLogs = targetLogs.filter((l) => {
     if (l.rating === "deleted") return false;
     const t = new Date(l.t);
     return t >= thirtyDaysAgo && t <= endTarget;
   });
 
-  const totalReviews30d = relevantLogs.length;
-  const passedReviews30d = relevantLogs.filter((l) => l.rating !== "again").length;
+  const reviewStateLogs = relevantLogs.filter((l) => l.state_before === 2);
+  const totalReviews30d = reviewStateLogs.length;
+  const passedReviews30d = reviewStateLogs.filter((l) => l.rating !== "again").length;
   const retentionRate =
     totalReviews30d > 0 ? Number((passedReviews30d / totalReviews30d).toFixed(4)) : null;
 
@@ -178,13 +189,18 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
     forecast7d.push({ date: fDateStr, due_count: dueCount });
   }
 
-  const retentionPercent = retentionRate !== null ? `${(retentionRate * 100).toFixed(1)}%` : "N/A (no reviews)";
+  const retentionText =
+    retentionRate !== null
+      ? `${(retentionRate * 100).toFixed(1).replace(/\.0$/, "")}% (${passedReviews30d}/${totalReviews30d})`
+      : "n/a";
+
   const summary = [
     `Vega Memory Collection Stats (${dateStr})${options.subject ? ` - Subject: ${options.subject}` : ""}:`,
     `- Total Cards: ${cards.length}`,
     `- By State: New (${byState.new}), Learning (${byState.learning}), Review (${byState.review}), Relearning (${byState.relearning}), Suspended (${byState.suspended})`,
     `- Reviews Today: ${reviewsToday}`,
-    `- 30-Day True Retention: ${retentionPercent} (${passedReviews30d}/${totalReviews30d} reviews)`,
+    `- Learning-step again today: ${learningAgainToday}`,
+    `- True retention (30 days): ${retentionText}`,
     `- Leech Cards (lapses >= 6): ${leeches.length}`,
     `- Workload (next 7 days): ${forecast7d.map((f) => `${f.date}: ${f.due_count}`).join(" | ")}`,
   ].join("\n");
@@ -193,6 +209,7 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
     total_cards: cards.length,
     by_state: byState,
     reviews_today: reviewsToday,
+    learning_again_today: learningAgainToday,
     true_retention_30d: {
       total_reviews: totalReviews30d,
       passed_reviews: passedReviews30d,

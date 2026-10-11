@@ -22,6 +22,12 @@ Polaris lên lịch ôn tập theo các mốc thời gian cố định ($D+1, D+
 - **3 - Good (Đạt / Nhớ chuẩn):** Nhớ chính xác với nỗ lực nhận thức bình thường. Đây là mức đánh giá chuẩn nhất để hệ thống tính toán chu kỳ tối ưu.
 - **4 - Easy (Dễ / Nhớ tức thì):** Nhớ ngay lập tức mà không cần suy nghĩ. FSRS giảm độ khó $D$ và nhân chu kỳ lên khoảng thời gian dài hơn.
 
+### Tỉ Lệ Nhớ Thực Tế (True Retention) Chuẩn FSRS / Anki
+FSRS và Anki định nghĩa "True Retention" (Tỉ lệ nhớ thực tế) là tỉ lệ ôn tập thành công trên các thẻ **đã ở trạng thái Review** trước khi đánh giá:
+$$\text{True Retention} = \frac{\text{Passed (Hard/Good/Easy)}}{\text{Passed} + \text{Failed (Again)}}$$
+- **Loại trừ các bước học ban đầu (New -> Learning):** Khi học thẻ mới, việc người học chọn "Again" ở bước đầu là điều tự nhiên để nạp kiến thức vào não, không phải là một ký ức đã hình thành bị quên lãng. Do đó các bước Learning và Relearning được loại trừ khỏi True Retention và được đếm riêng ở chỉ số **Learning-step again**.
+- Khi chưa có lượt ôn nào ở trạng thái Review (ví dụ ngày đầu tiên học thẻ mới), True Retention hiển thị `n/a`.
+
 ---
 
 ## 2. Quy Tắc Soạn Thẻ (Card-Writing Rules)
@@ -116,4 +122,15 @@ Aurora deck.json (notebook/quiz/palace)
 - **2:** Hard (Nhớ chật vật).
 - **3:** Good (Nhớ chuẩn xác).
 - **4:** Easy (Nhớ tức thì).
+
+---
+
+## 5. Thống Kê Ghi Nhớ & Giám Sát Tiến Trình (Stats & Monitoring)
+
+Công cụ `vega_stats` cung cấp cái nhìn toàn diện về chất lượng bộ nhớ:
+- **By State:** Số lượng thẻ phân theo 5 trạng thái: Mới (`New`), Đang học (`Learning`), Đã thuộc (`Review`), Học lại (`Relearning`), và Tạm dừng (`Suspended`).
+- **Reviews Today & Learning-step again today:** Đếm riêng số lượt ôn hoàn thành hôm nay và số lần bấm "Again" trong các bước học ban đầu.
+- **True Retention (30 ngày):** Tỉ lệ nhớ thực tế trên các thẻ ở trạng thái Review trong 30 ngày gần nhất (kèm số mẫu `passed / total`).
+- **Leech Cards (`lapses >= 6`):** Các thẻ bị quên từ 6 lần trở lên, cần người học hoặc agent kiểm tra và tái cấu trúc lại nội dung.
+- **Workload Forecast:** Biểu đồ dự báo số thẻ đến hạn trong 7 ngày tiếp theo.
 

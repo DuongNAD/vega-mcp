@@ -6,6 +6,7 @@ export const GUIDE_TOPICS = [
   "candidates",
   "origins",
   "session",
+  "stats",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -56,7 +57,11 @@ export function getGuideTopic(topic?: string): string {
    - **4 - Easy:** Nhớ tức thì, rất dễ. FSRS giảm độ khó D và nhân chu kỳ lên xa hơn.
 
 4. **Tỉ lệ giữ lại mong muốn (Desired Retention = 0.9):**
-   Hệ thống tính toán thời điểm lặp lại sao cho xác suất bạn nhớ được kiến thức tại thời điểm ôn luôn đạt 90%.`;
+   Hệ thống tính toán thời điểm lặp lại sao cho xác suất bạn nhớ được kiến thức tại thời điểm ôn luôn đạt 90%.
+
+5. **Tỉ lệ nhớ thực tế (True Retention) theo chuẩn FSRS & Anki:**
+   - True Retention = passed / (passed + failed) **chỉ tính trên các lượt ôn của thẻ đang ở trạng thái Review**.
+   - Các bước học ban đầu (New -> Learning) và học lại (Relearning) bị loại trừ khỏi True Retention. Đánh giá Again ở bước học được theo dõi riêng ở chỉ số "Learning-step again", giúp phản ánh chính xác độ bền của trí nhớ dài hạn.`;
 
     case "workflows":
       return `# Vega Workflows (Quy Trình Sử Dụng)
@@ -139,6 +144,26 @@ Các loại \`kind\`:
    - Đảm bảo tính **Bất biến (Idempotent)**: Lưu hash các sự kiện đã xử lý vào \`.vega/sync-state.json\`, chạy lại nhiều lần không bị cộng dồn hay sai lệch.
    - Tự động bỏ qua và cảnh báo thẻ không tồn tại hoặc dòng dữ liệu lỗi.`;
 
+    case "stats":
+      return `# Vega Collection Stats & True Retention (Thống Kê Ghi Nhớ)
+
+1. **Định nghĩa Tỉ lệ nhớ thực tế (True Retention - 30 ngày):**
+   - Theo chuẩn FSRS và Anki, True Retention được tính bằng:
+     $$\\text{True Retention} = \\frac{\\text{Passed (Hard, Good, Easy)}}{\\text{Passed} + \\text{Failed (Again)}}$$
+   - **Chỉ áp dụng cho các lượt ôn tập của thẻ đang ở trạng thái Review** trước khi đánh giá (thẻ đã tốt nghiệp chu kỳ học ban đầu).
+   - **Loại trừ hoàn toàn** các bước học (Learning) và học lại (Relearning). Khi chưa có lượt ôn nào ở trạng thái Review, hệ thống hiển thị "n/a".
+
+2. **Chỉ số Learning-step again (Đánh giá lại trong bước học):**
+   - Thẻ mới (New) hoặc thẻ đang học (Learning/Relearning) khi bấm "Again" được tính riêng là "Learning-step again today".
+   - Tách biệt chỉ số này giúp tránh việc hạ thấp tỉ lệ retention một cách sai lệch (ví dụ vừa tạo thẻ mới bấm Again không bị tính là quên ký ức).
+
+3. **Thẻ vướng (Leech Cards):**
+   - Các thẻ có số lần quên từ 6 lần trở lên (\`lapses >= 6\`).
+   - Cần xem xét lại câu hỏi/đáp án: có thể thẻ chưa tuân thủ quy tắc nguyên tử hóa hoặc câu từ gây nhầm lẫn.
+
+4. **Dự báo tải ôn tập 7 ngày tới (Workload Forecast):**
+   - Ước lượng số lượng thẻ đến hạn ôn tập trong 7 ngày tiếp theo để chủ động sắp xếp thời gian.`;
+
     case "overview":
     default:
       return `# Vega MCP - Guide Overview
@@ -158,7 +183,8 @@ Available guide topics:
 - \`workflows\`: End-to-end study and authoring workflows (Quy trình vận hành)
 - \`candidates\`: Extraction mechanics from Polaris and Aurora files (Trích xuất ứng viên)
 - \`origins\`: Origin tracking and locators (Truy xuất nguồn gốc)
-- \`session\`: Daily review sessions as Aurora decks & FSRS sync (Phiên ôn tập & Đồng bộ)`;
+- \`session\`: Daily review sessions as Aurora decks & FSRS sync (Phiên ôn tập & Đồng bộ)
+- \`stats\`: Collection statistics, True Retention definition vs learning steps, and leeches (Thống kê ghi nhớ & Tỉ lệ nhớ thực tế)`;
   }
 }
 

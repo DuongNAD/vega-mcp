@@ -129,6 +129,8 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
   const collection = await loadCollection(options.hub);
   let reviewsApplied = 0;
   let againCount = 0;
+  let reviewLapses = 0;
+  let learningAgainCount = 0;
   const skippedUnknown: string[] = [];
   const cardUpdates: SyncCardUpdate[] = [];
 
@@ -184,6 +186,11 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
     reviewsApplied++;
     if (ev.rating === "again") {
       againCount++;
+      if (stateBeforeNum === 2) {
+        reviewLapses++;
+      } else {
+        learningAgainCount++;
+      }
     }
   }
 
@@ -196,29 +203,39 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
   syncState.processed_hashes = Array.from(processedSet);
   await saveSyncState(syncState, options.hub);
 
-  // 7. Calculate retention today
+  // 7. Calculate retention today (review-state reviews only: state_before === 2)
   const allLogs = await readReviewLogs(options.hub);
   const todayStr = localTodayIso();
   const todayLogs = allLogs.filter((l) => l.t.startsWith(todayStr) && l.rating !== "deleted");
 
   let retentionToday: number | null = null;
-  let retentionPercent = "N/A (no reviews today)";
+  let retentionPercent = "n/a";
 
-  if (todayLogs.length > 0) {
-    const passed = todayLogs.filter((l) => l.rating !== "again").length;
-    retentionToday = Number((passed / todayLogs.length).toFixed(4));
-    retentionPercent = `${(retentionToday * 100).toFixed(1)}% (${passed}/${todayLogs.length})`;
+  const reviewStateTodayLogs = todayLogs.filter((l) => l.state_before === 2);
+  if (reviewStateTodayLogs.length > 0) {
+    const passed = reviewStateTodayLogs.filter((l) => l.rating !== "again").length;
+    const total = reviewStateTodayLogs.length;
+    retentionToday = Number((passed / total).toFixed(4));
+    retentionPercent = `${(retentionToday * 100).toFixed(1).replace(/\.0$/, "")}% (${passed}/${total})`;
   } else if (reviewsApplied > 0) {
-    const passed = cardUpdates.filter((u) => u.rating !== "again").length;
-    retentionToday = Number((passed / reviewsApplied).toFixed(4));
-    retentionPercent = `${(retentionToday * 100).toFixed(1)}% (${passed}/${reviewsApplied})`;
+    const reviewStateApplied = cardUpdates.filter((u) => u.state_before === "Review");
+    if (reviewStateApplied.length > 0) {
+      const passed = reviewStateApplied.filter((u) => u.rating !== "again").length;
+      const total = reviewStateApplied.length;
+      retentionToday = Number((passed / total).toFixed(4));
+      retentionPercent = `${(retentionToday * 100).toFixed(1).replace(/\.0$/, "")}% (${passed}/${total})`;
+    } else {
+      retentionToday = null;
+      retentionPercent = "n/a";
+    }
   }
 
   // 8. Build summary
   const summary = [
     `Vega Progress Sync Summary:`,
     `- Reviews applied: ${reviewsApplied}`,
-    `- Forgotten (Again / lapses): ${againCount}`,
+    `- Review lapses: ${reviewLapses}`,
+    `- Learning-step again: ${learningAgainCount}`,
     `- Retention today: ${retentionPercent}`,
     `- Skipped (already synced): ${skippedDuplicates}`,
     ...(skippedUnknown.length > 0
@@ -239,6 +256,8 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
   return {
     reviews_applied: reviewsApplied,
     again_count: againCount,
+    review_lapses: reviewLapses,
+    learning_again_count: learningAgainCount,
     retention_today: retentionToday,
     retention_percent: retentionPercent,
     card_updates: cardUpdates,

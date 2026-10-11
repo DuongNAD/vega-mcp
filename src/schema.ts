@@ -95,13 +95,26 @@ export const CardCandidateSchema = z.strictObject({
 });
 export type CardCandidate = z.output<typeof CardCandidateSchema>;
 
-export const ReviewLogEntrySchema = z.strictObject({
+export const ReviewLogEntrySchema = z.object({
   t: z.string().describe("ISO date-time of review"),
   card: z.string().min(1).describe("Card ID"),
   rating: z.union([z.enum(REVIEW_RATINGS), z.literal("deleted")]).describe("Review rating or deleted"),
-  state_before: z.number().int().min(0).max(3),
-  due_before: z.string(),
-  elapsed_days: z.number(),
+  state_before: z
+    .preprocess((val) => {
+      if (typeof val === "string") {
+        const s = val.toLowerCase().trim();
+        if (s === "new") return 0;
+        if (s === "learning") return 1;
+        if (s === "review") return 2;
+        if (s === "relearning") return 3;
+        const n = Number(val);
+        if (!isNaN(n)) return n;
+      }
+      return val;
+    }, z.number().int().min(0).max(3).optional())
+    .describe("0: New, 1: Learning, 2: Review, 3: Relearning"),
+  due_before: z.string().optional(),
+  elapsed_days: z.number().optional(),
   ms: z.number().optional().describe("Review response time in milliseconds"),
   via: z.enum(["tool", "aurora"]).default("tool"),
 });
@@ -161,6 +174,7 @@ export interface StatsResult {
     suspended: number;
   };
   reviews_today: number;
+  learning_again_today: number;
   true_retention_30d: {
     total_reviews: number;
     passed_reviews: number;
@@ -248,6 +262,8 @@ export interface SyncCardUpdate {
 export interface SyncResult {
   reviews_applied: number;
   again_count: number;
+  review_lapses: number;
+  learning_again_count: number;
   retention_today: number | null;
   retention_percent: string;
   card_updates: SyncCardUpdate[];
