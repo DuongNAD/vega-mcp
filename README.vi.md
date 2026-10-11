@@ -1,6 +1,10 @@
 [English](README.md) | Tiếng Việt
 
+<p align="center"><img src="docs/banner.jpg" alt="Vega MCP — cầu ô thước nối sao Chức Nữ và Ngưu Lang qua dải Ngân Hà" width="100%"></p>
+
 # Vega MCP
+
+*Được đặt tên theo sao Chức Nữ: Chức Nữ gặp lại Ngưu Lang đúng thời điểm mỗi năm, tựa như lặp lại ngắt quãng đưa mỗi thẻ nhớ trở lại đúng lúc.*
 
 Vega là động cơ ghi nhớ và lặp lại giãn cách thích ứng (Adaptive Spaced Repetition - FSRS) trong hệ sinh thái học tập của người học: tích hợp trên mọi môn học, tự động trích xuất ứng viên thẻ từ tài liệu bài giảng (Polaris facts, Aurora notebook, trắc nghiệm, flashcards, cung điện trí nhớ Loci, và Sổ lỗi errorlog), phục vụ hàng đợi ôn tập hàng ngày và lưu vết trạng thái trí nhớ FSRS.
 

@@ -1,6 +1,10 @@
 [Tiếng Việt](README.vi.md) | English
 
+<p align="center"><img src="docs/banner.jpg" alt="Vega MCP — Vega and Altair bridged across the Milky Way" width="100%"></p>
+
 # Vega MCP
+
+*Named after Vega, the Weaver star: Chức Nữ meets Ngưu Lang again at the right time each year, as spaced repetition brings each card back at the right time.*
 
 Vega is the memory engine of the learner's MCP ecosystem: adaptive spaced repetition (FSRS) across every subject, with cards drawn from what the learner already studies (Polaris facts, Aurora notebook pages, quizzes, flashcards, memory palaces, and error logs), daily review queues, and automatic memory state tracking.
 
