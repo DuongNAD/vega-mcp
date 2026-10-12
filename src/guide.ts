@@ -7,6 +7,7 @@ export const GUIDE_TOPICS = [
   "origins",
   "session",
   "stats",
+  "inbox",
 ] as const;
 export type GuideTopic = (typeof GUIDE_TOPICS)[number];
 
@@ -81,12 +82,17 @@ export function getGuideTopic(topic?: string): string {
    - Agent rà soát, tinh chỉnh câu chữ theo quy tắc soạn thẻ.
    - Gọi \`vega_add { cards: [...] }\` để lưu vào bộ sưu tập. Hệ thống tự động khử trùng lặp và gán ID + trạng thái FSRS ban đầu.
 
-3. **Phiên ôn tập hàng ngày với Aurora Deck (Daily Study):**
+3. **Nạp thẻ từ hộp thư (Inbox):**
+   - Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại) và Mira (điểm dừng dự đoán sai) thả tệp \`.jsonl\` vào \`<hub>/.vega/inbox/\`. Họ không bao giờ ghi \`cards.json\` hay \`reviews.jsonl\`.
+   - Xem trước (không ghi gì): \`vega_inbox { action: "list" }\`. Nạp: \`vega_inbox { action: "ingest" }\`, hoặc gọi \`vega_sync\` (luôn nạp hộp thư trước khi áp dụng đánh giá).
+   - Thẻ mới vào hàng đợi trong hạn mức thẻ mới mỗi ngày của \`vega_due\`. Chi tiết: \`vega_guide { topic: "inbox" }\`.
+
+4. **Phiên ôn tập hàng ngày với Aurora Deck (Daily Study):**
    - Gọi prompt \`review_today\` hoặc tool \`vega_session\` để tạo bộ slide ôn tập hàng ngày tại \`.vega/session/\`.
    - Xem trực tiếp bằng \`aurora_preview\` hoặc mở file HTML, lật thẻ và đánh giá qua phím 1-4.
    - Gọi \`vega_sync\` để tự động đồng bộ đánh giá vào FSRS.
 
-4. **Theo dõi tiến độ & Thẻ vướng (Monitoring):**
+5. **Theo dõi tiến độ & Thẻ vướng (Monitoring):**
    - Gọi \`vega_stats\` để xem số lượng thẻ theo trạng thái, tỉ lệ nhớ thực tế 30 ngày qua, và các thẻ bị quên từ 6 lần trở lên (Leeches).`;
 
     case "candidates":
@@ -116,11 +122,19 @@ Mọi thẻ trong Vega bắt buộc phải có đối tượng \`origin\`:
 Các loại \`kind\`:
 - \`polaris-fact\`: Dữ kiện từ Polaris \`facts.json\` (locator: \`fact F12 [p. 2]\`).
 - \`polaris-errorlog\`: Lỗi từ Polaris \`errorlog.md\` (locator: \`ERR_...\` hoặc tiêu đề mục).
+- \`polaris-selfcheck\`: Câu tự kiểm tra cuối bài của Polaris (gửi qua hộp thư).
 - \`aurora-notebook\`: Trang vở ghi chép từ Aurora slide notebook (locator: \`slide N (notebook)\`).
 - \`aurora-quiz\`: Câu hỏi trắc nghiệm từ Aurora slide quiz (locator: \`slide N (quiz)\`).
 - \`aurora-flashcard\`: Thẻ ghi nhớ từ Aurora slide flashcards (locator: \`slide N (flashcards)\`).
 - \`aurora-palace\`: Trạm trí nhớ Loci từ Aurora slide palace (locator: \`slide N (palace), station: ...\`).
-- \`manual\`: Thẻ do người học hoặc agent tự thêm thủ công.`;
+- \`aurora-predict\`: Bài tập dự đoán kết quả chạy mã của Aurora (gửi qua hộp thư).
+- \`orion-attempt\`: Lỗi lặp lại trong lab của Orion (locator: tên phép kiểm tra; gửi qua hộp thư).
+- \`mira-stop\`: Điểm dừng dự đoán sai trong trình phát Mira (locator: \`stop-3\`; gửi qua hộp thư).
+- \`manual\`: Thẻ do người học hoặc agent tự thêm thủ công.
+
+Hai trường tùy chọn khác:
+- \`origin.href\` (tối đa 400 ký tự, không dùng giao thức \`javascript:\`, \`data:\`, \`vbscript:\` vì nó thành liên kết bấm được trong bài ôn tập): liên kết mở đúng chỗ nguồn (ví dụ trình phát Mira kèm \`#stop-3\`). Khi thẻ có \`href\`, slide ôn tập hiện nhãn nguồn tiếng Việt bấm được, như \`Mira · điểm dừng 3\`, \`Sổ lỗi · ERR_2026-10-12_ab12cd\`, \`Orion · <phép kiểm tra>\`.
+- \`key\` (thẻ, 1-200 ký tự): khóa chống trùng ổn định do nhà sản xuất đặt, duy nhất trong cả bộ thẻ khi có. \`vega_add\` cũng nhận \`key\`; thẻ trùng khóa bị bỏ qua.`;
 
     case "session":
       return `# Vega Review Sessions & Aurora Integration (Phiên Ôn Tập Hàng Ngày)
@@ -139,6 +153,7 @@ Các loại \`kind\`:
    - Phím Space / Enter: Lật thẻ xem đáp án và mỏ neo trí nhớ.
    - Phím 1 (Again), 2 (Hard), 3 (Good), 4 (Easy): Đánh giá mức độ nhớ.
    - Bấm vào nguồn gốc (\`origin\`) để mở ngay bài học gốc chứa kiến thức đó.
+   - Thẻ có \`origin.href\` (thẻ từ hộp thư) cho slide \`origin: { label, href }\`: \`href\` được chuyển nguyên vẹn, \`label\` là mô tả tiếng Việt ngắn gồm loại nguồn và vị trí, ví dụ \`Mira · điểm dừng 3\`, \`Sổ lỗi · ERR_2026-10-12_ab12cd\`, \`Orion · <phép kiểm tra>\`.
 
 3. **Ghi nhận sự kiện học tập (\`progress.jsonl\`):**
    - Khi xem qua \`aurora_preview\`, các thao tác đánh giá phát sinh sự kiện loại \`card\`:
@@ -146,6 +161,7 @@ Các loại \`kind\`:
    - Dữ liệu được ghi vào \`.vega/session/progress.jsonl\` hoặc xuất ra file \`aurora-progress-*.jsonl\`.
 
 4. **Đồng bộ tự động (\`vega_sync\`):**
+   - Bước đầu tiên: nạp hộp thư thẻ \`.vega/inbox/\` (xem \`vega_guide { topic: "inbox" }\`) và báo số tệp đã đọc, thẻ tạo mới, thẻ trùng, dòng bị từ chối.
    - Đọc \`.vega/session/progress.jsonl\` hoặc file xuất, lọc các sự kiện \`card\`.
    - Áp dụng các đánh giá theo thứ tự thời gian vào thuật toán FSRS.
    - Đảm bảo tính **Bất biến (Idempotent)**: Lưu hash các sự kiện đã xử lý vào \`.vega/sync-state.json\`, chạy lại nhiều lần không bị cộng dồn hay sai lệch.
@@ -171,6 +187,85 @@ Các loại \`kind\`:
 4. **Dự báo tải ôn tập 7 ngày tới (Workload Forecast):**
    - Ước lượng số lượng thẻ đến hạn ôn tập trong 7 ngày tiếp theo để chủ động sắp xếp thời gian.`;
 
+    case "inbox":
+      return `# Vega Card Inbox - Một Hàng Đợi Ôn Tập Duy Nhất (Hộp Thư Thẻ)
+
+Hợp đồng: \`vega-card-inbox.v1\` (dùng chung cho Vega, Polaris, Orion, Mira, Constellation).
+
+## 1. Vì sao chỉ một hàng đợi?
+- Giãn cách các lần truy hồi giúp nhớ lâu hơn so với dồn vào một lần (Latimier, Peyre và Ramus, 2021, doi:10.1007/s10648-020-09572-8).
+- Ôn tập cá nhân hóa, lập lịch theo lịch sử trả lời của từng người với từng mục, cho kết quả giữ lại tốt hơn lịch giãn cách chung (Lindsey và cs., 2014, doi:10.1177/0956797613504302). FSRS cũng lập lịch theo trạng thái trí nhớ của từng thẻ (cùng hướng cá nhân hóa, không phải cùng một mô hình toán).
+- Hệ quả thiết kế (lập luận kỹ thuật của hệ sinh thái, không phải kết luận của hai bài báo): nếu mỗi công cụ tự nhắc ôn theo lịch cố định riêng, cùng một kiến thức bị nhắc nhiều lần và người học tích tụ "nợ ôn tập". Vì vậy mọi công cụ chỉ GỬI ứng viên thẻ vào hộp thư; một bộ lập lịch thích ứng duy nhất (Vega, FSRS) xác thực, khử trùng và lên lịch.
+
+## 2. Ai gửi thẻ vào hộp thư?
+| Nhà sản xuất | Gửi gì | \`origin.kind\` |
+| --- | --- | --- |
+| Polaris | mục trong Sổ lỗi; câu tự kiểm tra cuối bài | \`polaris-errorlog\`, \`polaris-selfcheck\` |
+| Orion | lỗi lặp lại trong lab | \`orion-attempt\` |
+| Mira | điểm dừng dự đoán sai | \`mira-stop\` |
+| Aurora, Sirius, thủ công | dự đoán sai, trắc nghiệm sai, thẻ viết tay | \`aurora-predict\`, \`aurora-quiz\`, \`manual\` |
+
+Nhà sản xuất không bao giờ ghi \`.vega/cards.json\` hay \`.vega/reviews.jsonl\`.
+
+## 3. Vị trí và định dạng tệp
+- Thư mục: \`<hub>/.vega/inbox/\` (hub mặc định \`D:/02_Learning_Knowledge\`, hoặc \`VEGA_HUB\`).
+- Mỗi lô là một tệp MỚI: \`<producer>-<YYYYMMDDTHHmmss>-<6 hex thường>.jsonl\`, UTF-8, mỗi dòng một đối tượng JSON, có xuống dòng cuối.
+- Ghi nguyên tử: ghi \`<tên>.jsonl.tmp\` cùng thư mục rồi đổi tên. Vega bỏ qua \`*.tmp\`, thư mục con và tệp không phải \`.jsonl\`. Không bao giờ ghi thêm hay sửa tệp đã có.
+- Dữ liệu cá nhân: toàn bộ \`.vega/\` bị git bỏ qua theo hợp đồng \`personal-data\`.
+
+Trường của mỗi dòng (trường lạ bị từ chối):
+| Trường | Quy tắc |
+| --- | --- |
+| \`v\` | bắt buộc, số nguyên \`1\` |
+| \`t\` | bắt buộc, ISO 8601 có múi giờ (\`Z\` hoặc \`+07:00\`); thành \`created\` của thẻ |
+| \`producer\` | bắt buộc: \`polaris\`, \`orion\`, \`mira\`, \`aurora\`, \`sirius\`, \`manual\` |
+| \`key\` | bắt buộc, 1-200 ký tự, khóa chống trùng ổn định, PHẢI bắt đầu bằng \`<producer>:\` |
+| \`subject\` | bắt buộc, 1-120 ký tự (tên thư mục môn như \`Machine_Learning\`, hoặc tên hiển thị) |
+| \`deck\` | tùy chọn, tối đa 120 ký tự (bài, module, lab hoặc tên trình phát) |
+| \`kind\` | tùy chọn: \`basic\` (mặc định), \`cloze\`, \`reverse\` |
+| \`front\` | bắt buộc, 1-600 ký tự, tiếng Việt, cho phép markup nội dòng (đậm, mã, toán, \`[[cloze]]\` với kind cloze); một ý một thẻ; không emoji |
+| \`back\` | bắt buộc, 0-1200 ký tự |
+| \`hint\`, \`hook\` | tùy chọn, tối đa 200 ký tự |
+| \`origin\` | bắt buộc: \`kind\` (\`polaris-fact\`, \`polaris-errorlog\`, \`polaris-selfcheck\`, \`aurora-quiz\`, \`aurora-predict\`, \`orion-attempt\`, \`mira-stop\`, \`manual\`), \`path\` (1-400, tệp hoặc thư mục nguồn), \`locator\` (tùy chọn, tối đa 120), \`href\` (tùy chọn, tối đa 400, liên kết mở đúng chỗ nguồn; không dùng giao thức \`javascript:\`, \`data:\`, \`vbscript:\`) |
+| \`tags\` | tùy chọn, tối đa 10 phần tử, mỗi phần tử 1-40 ký tự |
+| \`reason\` | tùy chọn, tối đa 200 ký tự; lý do tạo thẻ, hiện trong báo cáo nạp (không lưu vào thẻ) |
+
+Ví dụ một dòng:
+\`\`\`json
+{"v":1,"t":"2026-10-12T10:30:00+07:00","producer":"mira","key":"mira:vong-lap-for:stop-3","subject":"Python_Basics","deck":"Vòng lặp for","front":"Dò \`tong_chu_so(-4567)\`: sau dòng 6 ở vòng lặp đầu, \`tong\` bằng bao nhiêu?","back":"Giá trị thật và lý do.","origin":{"kind":"mira-stop","path":"Python_Basics/mira/vong-lap-for.html","locator":"stop-3","href":"file:///D:/02_Learning_Knowledge/Python_Basics/mira/vong-lap-for.html#stop-3"},"tags":["python"],"reason":"Dự đoán sai ở điểm dừng 3"}
+\`\`\`
+
+## 4. Quy ước khóa (\`key\`)
+- Sổ lỗi Polaris: \`polaris:<tên thư mục môn>:<mã mục>\`, ví dụ \`polaris:Machine_Learning:ERR_2026-10-12_ab12cd\`.
+- Tự kiểm tra Polaris: \`polaris:<tên thư mục môn>:selfcheck:<mã module>:<chỉ số>\`.
+- Orion: \`orion:<tên thư mục lab>:<khóa phép kiểm tra>\`.
+- Mira: \`mira:<slug trình phát>:stop-<k>\`.
+Khóa phải ổn định: cùng một sự kiện luôn cho cùng một khóa, để gửi lại không tạo thẻ trùng.
+
+## 5. Vega làm gì với từng dòng
+1. Xác thực nghiêm ngặt: JSON hợp lệ, đủ trường bắt buộc, đúng kiểu và độ dài, không có trường lạ.
+2. Nếu đã có thẻ cùng \`key\` (đang học, tạm dừng, hoặc đã xóa mềm bằng \`vega_delete\`) thì bỏ qua và tính là trùng. Thẻ xóa mềm để lại khóa trong \`reviews.jsonl\` nên không bị tạo lại.
+3. Ngược lại tạo thẻ mới ở trạng thái New của FSRS: \`created\` = \`t\`, kèm \`subject\`, \`deck\`, \`kind\`, \`front\`, \`back\`, \`hint\`, \`hook\`, \`origin\` (cả \`href\`), \`tags\`, \`key\`.
+4. Tệp xử lý xong chuyển sang \`inbox/done/\`. Dòng không hợp lệ (thêm trường \`_error\` nêu lý do) ghi vào \`inbox/rejected/<cùng tên tệp>\`; dòng không phải JSON được gói thành \`{"_raw": ..., "_error": ...}\`.
+5. Nạp là bất biến (idempotent): chạy lại không đổi gì, vì khóa đã tồn tại và tệp đã nằm trong \`done/\`.
+6. Thứ tự: tệp theo thứ tự tên, dòng theo thứ tự trong tệp; trùng khóa trong cùng lô thì dòng đầu thắng.
+
+Báo cáo gồm: số tệp đã đọc, thẻ tạo mới, thẻ trùng, dòng bị từ chối kèm lý do.
+
+## 6. Dùng thế nào
+- \`vega_inbox { action: "list" }\`: xem tệp đang chờ, số dòng và kết quả xác thực thử. Không ghi gì.
+- \`vega_inbox { action: "ingest" }\`: nạp ngay.
+- \`vega_sync\`: nạp hộp thư trước, rồi áp dụng đánh giá từ \`progress.jsonl\`; báo cả hai.
+- CLI: \`vega inbox list\`, \`vega inbox ingest\` (thêm \`--hub <thư mục>\`, \`--json\`).
+- Thẻ mới đi vào hàng đợi theo hạn mức thẻ mới mỗi ngày của \`vega_due\` (mặc định 10), thẻ tạo sớm nhất trước.
+- Tệp trong \`inbox/done/\` và \`inbox/rejected/\` chỉ là bản lưu để đối chiếu, Vega không đọc lại chúng (khóa chống trùng nằm trong \`cards.json\` và \`reviews.jsonl\`). Trên ổ exFAT cụm 512 KB, mỗi tệp nhỏ chiếm trọn một cụm, nên có thể tự dọn các tệp cũ khi không còn cần.
+
+## 7. Viết nội dung thẻ (cho nhà sản xuất)
+- Trượt trắc nghiệm: \`front\` là câu hỏi; \`back\` là đáp án đúng kèm giải thích ngắn.
+- Dự đoán sai (Aurora predict, Mira): \`front\` nêu cần dự đoán gì, kèm mã tối thiểu trong dấu huyền, ví dụ "Dò \`tong_chu_so(-4567)\`: sau dòng 6 ở vòng lặp đầu, \`tong\` bằng bao nhiêu?"; \`back\` là giá trị thật và lý do; \`origin.href\` mở đúng chỗ.
+- Mục Sổ lỗi: \`front\` là tình huống cần giải lại (không bao giờ là "đọc lại X"); \`back\` là nguyên nhân gốc và quy tắc sửa.
+- Tự kiểm tra: \`front\` là câu hỏi; \`back\` là đáp án.`;
+
     case "overview":
     default:
       return `# Vega MCP - Guide Overview
@@ -191,7 +286,10 @@ Available guide topics:
 - \`candidates\`: Extraction mechanics from Polaris and Aurora files (Trích xuất ứng viên)
 - \`origins\`: Origin tracking and locators (Truy xuất nguồn gốc)
 - \`session\`: Daily review sessions as Aurora decks & FSRS sync (Phiên ôn tập & Đồng bộ)
-- \`stats\`: Collection statistics, True Retention definition vs learning steps, and leeches (Thống kê ghi nhớ & Tỉ lệ nhớ thực tế)`;
+- \`stats\`: Collection statistics, True Retention definition vs learning steps, and leeches (Thống kê ghi nhớ & Tỉ lệ nhớ thực tế)
+- \`inbox\`: Single review queue: how Polaris, Orion and Mira send card candidates (\`.vega/inbox/*.jsonl\`), file format, keys, and what Vega does with each line (Hộp thư thẻ & hàng đợi duy nhất)
+
+Tool \`vega_inbox { action: "list" | "ingest" }\` and \`vega_sync\` read the inbox; Vega is the single review queue of the ecosystem.`;
   }
 }
 

@@ -45,7 +45,7 @@ Vega sử dụng thuật toán **FSRS (Free Spaced Repetition Scheduler)** qua g
 
 1. **Agent soạn thẻ chuẩn, Vega lên lịch:** Vega đề xuất ứng viên từ học liệu; agent tinh chỉnh theo 6 quy tắc soạn thẻ (nguyên tử hóa 1 ý/thẻ, cloze cho thuật ngữ, giữ mỏ neo trí nhớ, văn phong tiếng Việt chuẩn mực).
 2. **Thuật toán chuẩn mực:** Sử dụng `ts-fsrs` (v5.4.2, MIT) được đóng gói độc lập trong một file chạy duy nhất.
-3. **Lưu trữ tinh gọn:** Toàn bộ dữ liệu nằm trong thư mục `VEGA_HUB/.vega/` (mặc định `D:/02_Learning_Knowledge/.vega/`) với các file `cards.json`, `reviews.jsonl`, `sync-state.json`, và thư mục bài ôn tập cố định `session/` qua cơ chế ghi nguyên tử (atomic writes).
+3. **Lưu trữ tinh gọn:** Toàn bộ dữ liệu nằm trong thư mục `VEGA_HUB/.vega/` (mặc định `D:/02_Learning_Knowledge/.vega/`) với các file `cards.json`, `reviews.jsonl`, `sync-state.json`, thư mục bài ôn tập cố định `session/`, và thư mục nhận thẻ `inbox/` (kèm `done/` và `rejected/`) qua cơ chế ghi nguyên tử (atomic writes).
 4. **Nguồn gốc rõ ràng & Liên kết bài học:** Mỗi thẻ đều lưu trữ chính xác nguồn gốc (`kind`, đường dẫn file, vị trí định vị như "slide 12", "fact F1", "trạm 7") và tự động tính toán liên kết tương đối trỏ về bài giảng gốc.
 
 ---
@@ -64,19 +64,37 @@ Vega chuyển đổi hàng đợi ôn tập hàng ngày thành các bộ slide *
 
 ---
 
+## Một Hàng Đợi Ôn Tập Duy Nhất: Hộp Thư Thẻ (Card Inbox)
+
+Mọi nơi sinh ra mục cần ôn trong hệ sinh thái (Sổ lỗi và câu tự kiểm tra của Polaris, lỗi lặp lại của Orion, điểm dừng dự đoán sai của Mira, các bản xuất Aurora sau này) đều thả ứng viên thẻ vào hộp thư của Vega thay vì tự lên lịch ôn. Bằng chứng nghiên cứu ủng hộ một bộ lập lịch giãn cách thích ứng hơn là nhiều bộ lịch cố định (Latimier, Peyre và Ramus 2021, [doi:10.1007/s10648-020-09572-8](https://doi.org/10.1007/s10648-020-09572-8); Lindsey và cs. 2014, [doi:10.1177/0956797613504302](https://doi.org/10.1177/0956797613504302)), còn việc hai bộ lập lịch sinh ra "nợ ôn tập" là lập luận kỹ thuật, không phải kết luận của hai bài báo đó. Vì vậy chỉ Vega xác thực, khử trùng và lên lịch bằng FSRS. Nhà sản xuất không bao giờ ghi `cards.json` hay `reviews.jsonl`.
+
+Hợp đồng `vega-card-inbox.v1`:
+
+- **Tệp:** `<hub>/.vega/inbox/<producer>-<YYYYMMDDTHHmmss>-<6 hex>.jsonl`, mỗi lô một tệp mới, UTF-8, mỗi dòng một đối tượng JSON, ghi nguyên tử (`<tên>.jsonl.tmp` rồi đổi tên). Vega bỏ qua tệp `*.tmp`, thư mục con và tệp không phải `.jsonl`.
+- **Dòng:** `{v: 1, t, producer, key, subject, deck?, kind?, front, back, hint?, hook?, origin: {kind, path, locator?, href?}, tags?, reason?}`. Trường lạ bị từ chối. `key` là khóa chống trùng ổn định, phải bắt đầu bằng `<producer>:` (ví dụ `polaris:Machine_Learning:ERR_2026-10-12_ab12cd`, `orion:Lab_1:check_sum`, `mira:vong-lap-for:stop-3`). `origin.href` thành liên kết bấm được trong bài ôn tập nên liên kết `javascript:`, `data:`, `vbscript:` bị từ chối.
+- **Nạp thẻ** (bước đầu của `vega_sync`, hoặc `vega_inbox { action: "ingest" }`): xử lý tệp theo thứ tự tên; xác thực nghiêm ngặt từng dòng; `key` đã có (thẻ đang học, tạm dừng hoặc đã xóa mềm) thì bỏ qua và tính là trùng; dòng hợp lệ còn lại thành thẻ mới trạng thái New của FSRS (`created` = `t` của dòng). Tệp xử lý xong chuyển sang `inbox/done/`; dòng không hợp lệ, kèm trường `_error`, ghi vào `inbox/rejected/<cùng tên>`. Nạp là bất biến: chạy lại không đổi gì.
+- **Xem trước:** `vega_inbox { action: "list" }` cho biết tệp đang chờ, số dòng và kết quả xác thực thử, không ghi gì.
+- **Bộ slide ôn tập:** thẻ có `origin.href` cho slide `srs` mang `origin: {label, href}` với nhãn tiếng Việt ngắn như `Mira · điểm dừng 3`, `Sổ lỗi · ERR_2026-10-12_ab12cd`, `Orion · <phép kiểm tra>`.
+- **Xóa mềm:** `vega_delete` lưu `key` của thẻ trên dòng "deleted" trong `reviews.jsonl`, nên nhà sản xuất gửi lại thẻ mà người học đã xóa sẽ không làm thẻ đó quay lại.
+
+Đọc đầy đủ quy tắc bằng `vega_guide { topic: "inbox" }`.
+
+---
+
 ## Danh Mục Công Cụ, Prompts & Lệnh CLI
 
 ### Công Cụ (MCP Server qua Stdio)
 
-- `vega_guide { topic? }`: Xem hướng dẫn quy tắc soạn thẻ, nguyên lý FSRS, quy trình vận hành, phiên ôn tập, truy xuất nguồn gốc và thống kê ghi nhớ (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`).
+- `vega_guide { topic? }`: Xem hướng dẫn quy tắc soạn thẻ, nguyên lý FSRS, quy trình vận hành, phiên ôn tập, truy xuất nguồn gốc, thống kê ghi nhớ và hộp thư thẻ (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`, `inbox`).
 - `vega_candidates { path, from?, subject? }`: Trích xuất tất định ứng viên thẻ từ Polaris `facts.json`, `errorlog.md` hoặc Aurora `deck.json`.
-- `vega_add { cards, hub? }`: Kiểm tra hợp lệ, khử trùng lặp, gán ID và khởi tạo trạng thái FSRS ban đầu.
+- `vega_add { cards, hub? }`: Kiểm tra hợp lệ, khử trùng lặp (cùng nguồn + mặt trước, hoặc cùng `key` tùy chọn), gán ID và khởi tạo trạng thái FSRS ban đầu. Thẻ có thể mang `key` và `origin.href`.
+- `vega_inbox { action: "list" | "ingest", hub? }`: Xem trước (không ghi gì) hoặc nạp hộp thư thẻ; báo cáo số tệp đã đọc, thẻ tạo mới, thẻ trùng và dòng bị từ chối kèm lý do (tiếng Việt).
 - `vega_edit { id, patch, hub? }`: Chỉnh sửa nội dung mặt trước, mặt sau, gợi ý, mỏ neo hoặc thẻ phân loại.
 - `vega_suspend { id, suspended?, hub? }`: Tạm dừng hoặc kích hoạt lại thẻ trong hàng đợi ôn tập.
-- `vega_delete { id, hub? }`: Xóa mềm thẻ (loại khỏi bộ sưu tập đang học và ghi nhận sự kiện vào lịch sử).
+- `vega_delete { id, hub? }`: Xóa mềm thẻ (loại khỏi bộ sưu tập đang học và ghi nhận sự kiện vào lịch sử, kèm `key` của thẻ nếu có).
 - `vega_due { subject?, limit?, new_limit?, date?, hub? }`: Lấy hàng đợi hôm nay (thẻ quá hạn -> thẻ đến hạn -> thẻ mới có giới hạn) kèm dự báo tải 7 ngày tới.
 - `vega_session { date?, limit?, new_limit?, subject?, build?, hub? }`: Tạo bộ slide ôn tập hôm nay vào `.vega/session/` và biên dịch với Aurora CLI.
-- `vega_sync { file?, hub? }`: Đồng bộ kết quả đánh giá từ `.vega/session/progress.jsonl` hoặc file xuất vào FSRS một cách bất biến.
+- `vega_sync { file?, hub? }`: Nạp hộp thư thẻ trước (số liệu có trong phản hồi), rồi đồng bộ kết quả đánh giá từ `.vega/session/progress.jsonl` hoặc file xuất vào FSRS một cách bất biến.
 - `vega_review { id, rating, ms?, date?, via?, hub? }`: Đánh giá kết quả ôn tập (`again`, `hard`, `good`, `easy`) và cập nhật trạng thái FSRS.
 - `vega_stats { subject?, date?, hub? }`: Thống kê thẻ theo trạng thái, số lượt ôn hôm nay, số lần again ở bước học, tỉ lệ nhớ thực tế 30 ngày (chỉ tính thẻ Review), thẻ vướng (`lapses >= 6`) và dự báo khối lượng học.
 
@@ -91,8 +109,12 @@ Vega chuyển đổi hàng đợi ôn tập hàng ngày thành các bộ slide *
 # Tạo bộ slide ôn tập hôm nay
 node dist/vega.mjs session
 
-# Đồng bộ đánh giá từ Aurora vào FSRS
+# Nạp hộp thư thẻ, rồi đồng bộ đánh giá từ Aurora vào FSRS
 node dist/vega.mjs sync
+
+# Xem trước hộp thư thẻ (không ghi gì) / nạp hộp thư (thêm --json để lấy dữ liệu máy đọc được)
+node dist/vega.mjs inbox list
+node dist/vega.mjs inbox ingest
 
 # Xem hàng đợi ôn tập hôm nay
 node dist/vega.mjs due
@@ -114,6 +136,7 @@ node dist/vega.mjs guide stats
 
 ## Lịch Sử Phiên Bản (Version History)
 
+- **v0.3.0**: Vega trở thành hàng đợi ôn tập duy nhất của hệ sinh thái MCP. Hợp đồng hộp thư thẻ dùng chung `vega-card-inbox.v1`: các nhà sản xuất (Polaris, Orion, Mira, ...) thả ứng viên thẻ dạng `*.jsonl` vào `<hub>/.vega/inbox/`; Vega xác thực nghiêm ngặt, khử trùng theo `key` (thẻ đang học, tạm dừng và đã xóa mềm), tạo thẻ mới trạng thái New của FSRS, chuyển tệp đã xử lý sang `inbox/done/` và ghi dòng bị từ chối kèm `_error` vào `inbox/rejected/`, một cách bất biến. Công cụ mới `vega_inbox { action: "list" | "ingest" }` và lệnh CLI `vega inbox list|ingest`; `vega_sync` nạp hộp thư trước và báo số liệu. Thẻ có thêm `key` tùy chọn và duy nhất; nguồn gốc có thêm `href` và các loại `polaris-selfcheck`, `aurora-predict`, `orion-attempt`, `mira-stop`; `vega_delete` giữ `key` trên dòng nhật ký. Slide `srs` của bộ ôn tập mang `origin: {label, href}` cho thẻ có `origin.href`. Chủ đề hướng dẫn `inbox`. File `cards.json` cũ vẫn tải bình thường. e2e: kiểm tra CLI `due` nay cố định `--date 2026-10-11` (trước đó so sánh một ngày cố định với đồng hồ thật).
 - **v0.2.2**: Định dạng công thức toán KaTeX và mặt trước cụ thể cho trang vở Aurora notebook (thẻ công thức bọc `$$...$$` để Aurora hiển thị chuẩn bằng KaTeX trong phiên ôn tập; mặt trước bọc vế trái trong `$...$`; tách dòng nhiều công thức ngăn cách bởi `\quad`, `\qquad` hoặc `;` thành từng thẻ riêng biệt; dòng quy tắc và mỏ neo dùng định dạng "Quy tắc cốt lõi · <tiểu mục>" / "Mỏ neo trí nhớ · <tiểu mục>"; khử trùng lặp đảm bảo không có 2 thẻ cùng mặt trước trong một deck); cập nhật quy tắc soạn thẻ trong cẩm nang hướng dẫn.
 - **v0.2.1**: Tính toán và báo cáo Tỉ lệ nhớ thực tế (True Retention) chuẩn hóa theo FSRS / Anki: chỉ tính trên các thẻ ở trạng thái Review (`passed / (passed + failed)`); loại trừ bước học (Learning) và học lại (Relearning); bổ sung chỉ số "Learning-step again" đếm riêng lượt again khi mới học thẻ; bổ sung chủ đề hướng dẫn `stats`; tương thích ngược với các file nhật ký cũ không lưu trường state_before.
 - **v0.2.0**: Tích hợp phiên ôn tập Aurora Slides SRS (`vega_session`), tự động đồng bộ bất biến từ `progress.jsonl` (`vega_sync`), tối ưu hóa tái sử dụng thư mục `.vega/session/`, thêm prompt `review_today` và `make_cards`.

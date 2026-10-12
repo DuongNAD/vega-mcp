@@ -6,13 +6,32 @@ export type CardKind = (typeof CARD_KINDS)[number];
 export const ORIGIN_KINDS = [
   "polaris-fact",
   "polaris-errorlog",
+  "polaris-selfcheck",
   "aurora-notebook",
   "aurora-quiz",
   "aurora-flashcard",
   "aurora-palace",
+  "aurora-predict",
+  "orion-attempt",
+  "mira-stop",
   "manual",
 ] as const;
 export type OriginKind = (typeof ORIGIN_KINDS)[number];
+
+/** Maximum length of a card key (contract vega-card-inbox.v1). */
+export const CARD_KEY_MAX = 200;
+/** Maximum length of an origin href (contract vega-card-inbox.v1). */
+export const ORIGIN_HREF_MAX = 400;
+
+/**
+ * An origin href becomes a clickable link in the generated lesson page, so schemes that run script or embed
+ * content are refused (javascript:, data:, vbscript:). Browsers ignore tabs, newlines and spaces inside a scheme,
+ * so those are stripped before the check.
+ */
+export function isSafeHref(href: string): boolean {
+  const compact = href.replace(/[\u0000- \u007f]/g, "");
+  return !/^(?:javascript|data|vbscript):/i.test(compact);
+}
 
 export const REVIEW_RATINGS = ["again", "hard", "good", "easy"] as const;
 export type ReviewRating = (typeof REVIEW_RATINGS)[number];
@@ -21,8 +40,21 @@ export const CardOriginSchema = z.strictObject({
   kind: z.enum(ORIGIN_KINDS).describe("Source kind"),
   path: z.string().min(1).describe("File path or locator of source"),
   locator: z.string().optional().describe("Position within source: e.g. 'slide 7', 'fact F12', 'station 2'"),
+  href: z
+    .string()
+    .min(1)
+    .max(ORIGIN_HREF_MAX)
+    .refine(isSafeHref, { message: "href must not use the javascript:, data: or vbscript: scheme" })
+    .optional()
+    .describe("Link that opens the origin (e.g. a Mira player with #stop-3); passed to the session slide as origin.href"),
 });
 export type CardOrigin = z.output<typeof CardOriginSchema>;
+
+const CardKeySchema = z
+  .string()
+  .min(1)
+  .max(CARD_KEY_MAX)
+  .describe("Stable dedupe key from a producer (e.g. 'mira:<player slug>:stop-3'); unique across the collection when present");
 
 export const FsrsStateSchema = z.strictObject({
   due: z.string().describe("ISO date-time when card is due next"),
@@ -51,6 +83,7 @@ export const CardSchema = z.strictObject({
   tags: z.array(z.string()).default([]).describe("Categorization tags"),
   created: z.string().describe("ISO date-time when card was created"),
   suspended: z.boolean().optional().describe("Whether this card is paused from due queue"),
+  key: CardKeySchema.optional(),
   fsrs: FsrsStateSchema.describe("FSRS scheduling state"),
 });
 export type Card = z.output<typeof CardSchema>;
@@ -67,6 +100,7 @@ export const CardInputSchema = z.strictObject({
   tags: z.array(z.string()).default([]),
   created: z.string().optional(),
   suspended: z.boolean().optional(),
+  key: CardKeySchema.optional(),
 });
 export type CardInput = z.input<typeof CardInputSchema>;
 
@@ -117,6 +151,12 @@ export const ReviewLogEntrySchema = z.object({
   elapsed_days: z.number().optional(),
   ms: z.number().optional().describe("Review response time in milliseconds"),
   via: z.enum(["tool", "aurora"]).default("tool"),
+  key: z
+    .string()
+    .min(1)
+    .max(CARD_KEY_MAX)
+    .optional()
+    .describe("Card key, stored on 'deleted' lines so inbox de-duplication still recognizes a soft-deleted card"),
 });
 export type ReviewLogEntry = z.output<typeof ReviewLogEntrySchema>;
 
@@ -270,6 +310,112 @@ export interface SyncResult {
   skipped_duplicates: number;
   skipped_unknown: string[];
   malformed_lines: number;
+  /** Result of the card-inbox ingestion that vega_sync runs before reading progress events. */
+  inbox: InboxIngestResult;
+  /** Set when the inbox ingestion itself failed; progress events are still applied. */
+  inbox_error?: string;
+  summary: string;
+}
+
+/* ───────── Card Inbox (contract vega-card-inbox.v1) ───────── */
+
+export const INBOX_PRODUCERS = ["polaris", "orion", "mira", "aurora", "sirius", "manual"] as const;
+export type InboxProducer = (typeof INBOX_PRODUCERS)[number];
+
+export const INBOX_CARD_KINDS = ["basic", "cloze", "reverse"] as const;
+export type InboxCardKind = (typeof INBOX_CARD_KINDS)[number];
+
+/** Origin kinds a producer may put in an inbox line (a subset of ORIGIN_KINDS). */
+export const INBOX_ORIGIN_KINDS = [
+  "polaris-fact",
+  "polaris-errorlog",
+  "polaris-selfcheck",
+  "aurora-quiz",
+  "aurora-predict",
+  "orion-attempt",
+  "mira-stop",
+  "manual",
+] as const satisfies readonly OriginKind[];
+export type InboxOriginKind = (typeof INBOX_ORIGIN_KINDS)[number];
+
+/** One validated inbox line (strings are trimmed; optional empty strings are dropped). */
+export interface InboxLine {
+  v: 1;
+  t: string;
+  producer: InboxProducer;
+  key: string;
+  subject: string;
+  deck?: string;
+  kind: InboxCardKind;
+  front: string;
+  back: string;
+  hint?: string;
+  hook?: string;
+  origin: { kind: InboxOriginKind; path: string; locator?: string; href?: string };
+  tags: string[];
+  reason?: string;
+}
+
+export interface InboxProblem {
+  /** 1-based line number inside the inbox file. */
+  line: number;
+  error: string;
+}
+
+export interface InboxFileReport {
+  file: string;
+  /** Non-blank lines in the file. */
+  lines: number;
+  /** Cards that were (or, in a list preview, would be) created. */
+  created: number;
+  /** Valid lines whose key already exists (active, suspended, soft-deleted, or earlier in this batch). */
+  duplicates: number;
+  rejected: number;
+  problems: InboxProblem[];
+  /** Where the processed file now lives (ingest only). */
+  moved_to?: string;
+  /** Where the rejected lines were written (ingest only, when rejected > 0). */
+  rejected_to?: string;
+}
+
+export interface InboxCreatedCard {
+  id: string;
+  key: string;
+  subject: string;
+  front: string;
+  reason?: string;
+}
+
+export interface InboxFileError {
+  file: string;
+  error: string;
+}
+
+export interface InboxIngestResult {
+  inbox_dir: string;
+  files_read: number;
+  lines_total: number;
+  cards_created: number;
+  duplicates_skipped: number;
+  lines_rejected: number;
+  files: InboxFileReport[];
+  created_cards: InboxCreatedCard[];
+  ignored_files: string[];
+  file_errors: InboxFileError[];
+  summary: string;
+}
+
+export interface InboxListResult {
+  inbox_dir: string;
+  exists: boolean;
+  pending_files: number;
+  lines_total: number;
+  would_create: number;
+  would_skip_duplicates: number;
+  would_reject: number;
+  files: InboxFileReport[];
+  ignored_files: string[];
+  file_errors: InboxFileError[];
   summary: string;
 }
 

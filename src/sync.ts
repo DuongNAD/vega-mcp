@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { stateName, stepFsrs } from "./fsrs.js";
+import { emptyIngestResult, ingestInbox, inboxSyncLines } from "./inbox.js";
 import {
   REVIEW_RATINGS,
   type AuroraCardEvent,
+  type InboxIngestResult,
   type ReviewRating,
   type SyncCardUpdate,
   type SyncOptions,
@@ -17,7 +19,7 @@ import {
   saveCollection,
   saveSyncState,
 } from "./store.js";
-import { hash, localTodayIso, nowIso, parseDate, vegaPaths } from "./util.js";
+import { errMsg, hash, localTodayIso, nowIso, parseDate, vegaPaths } from "./util.js";
 
 interface RawCardEventEntry {
   hash: string;
@@ -25,6 +27,17 @@ interface RawCardEventEntry {
 }
 
 export async function syncProgress(options: SyncOptions = {}): Promise<SyncResult> {
+  // 0. Card inbox first (contract vega-card-inbox.v1): new cards must exist before progress events are applied.
+  // A failure here is reported in the summary but never blocks applying the learner's ratings.
+  let inbox: InboxIngestResult;
+  let inboxError: string | undefined;
+  try {
+    inbox = await ingestInbox(options.hub);
+  } catch (e) {
+    inboxError = errMsg(e);
+    inbox = emptyIngestResult(options.hub);
+  }
+
   const p = vegaPaths(options.hub);
   const filesToRead: string[] = [];
 
@@ -233,6 +246,7 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
   // 8. Build summary
   const summary = [
     `Vega Progress Sync Summary:`,
+    ...inboxSyncLines(inbox, inboxError),
     `- Reviews applied: ${reviewsApplied}`,
     `- Review lapses: ${reviewLapses}`,
     `- Learning-step again: ${learningAgainCount}`,
@@ -264,6 +278,8 @@ export async function syncProgress(options: SyncOptions = {}): Promise<SyncResul
     skipped_duplicates: skippedDuplicates,
     skipped_unknown: skippedUnknown,
     malformed_lines: malformedLines,
+    inbox,
+    ...(inboxError ? { inbox_error: inboxError } : {}),
     summary: summary.join("\n"),
   };
 }

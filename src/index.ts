@@ -3,14 +3,16 @@
  *
  *   node dist/vega.mjs                 -> MCP server on stdio
  *   node dist/vega.mjs session         -> CLI build today's review session deck
- *   node dist/vega.mjs sync [file]     -> CLI sync Aurora progress ratings to FSRS
+ *   node dist/vega.mjs sync [file]     -> CLI ingest the card inbox, then sync Aurora progress ratings to FSRS
+ *   node dist/vega.mjs inbox list      -> CLI preview the card inbox (no writes)
+ *   node dist/vega.mjs inbox ingest    -> CLI ingest the card inbox (<hub>/.vega/inbox/)
  *   node dist/vega.mjs due             -> CLI list today's due queue
  *   node dist/vega.mjs review <id> <r> -> CLI review a card
  *   node dist/vega.mjs stats           -> CLI view collection stats
  *   node dist/vega.mjs candidates <f>  -> CLI extract card candidates
  *   node dist/vega.mjs add <f>         -> CLI add cards
  *   node dist/vega.mjs guide [topic]   -> CLI view guide
- *   node dist/vega.mjs version         -> 0.2.2
+ *   node dist/vega.mjs version         -> 0.3.0
  *   node dist/vega.mjs help            -> CLI command list
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -22,6 +24,7 @@ import { z } from "zod";
 import { extractCandidates } from "./candidates.js";
 import { stepFsrs, stateName } from "./fsrs.js";
 import { getGuideTopic, GUIDE_TOPICS } from "./guide.js";
+import { ingestInbox, listInbox } from "./inbox.js";
 import {
   CARD_KINDS,
   CardInputSchema,
@@ -53,6 +56,7 @@ import { errMsg, nowIso, parseDate, VERSION } from "./util.js";
 export * from "./candidates.js";
 export * from "./fsrs.js";
 export * from "./guide.js";
+export * from "./inbox.js";
 export * from "./schema.js";
 export * from "./scheduler.js";
 export * from "./session.js";
@@ -83,13 +87,15 @@ Workflow:
 2. vega_candidates { path, from? } to extract raw candidate cards from Polaris facts/error logs or Aurora decks.
 3. Rewrite candidates following card rules (atomic idea, cloze for terms, keep memory hook, Vietnamese learner text).
 4. vega_add { cards } to validate, de-duplicate, and assign initial FSRS states.
-5. vega_due { subject?, limit?, date? } to inspect today's review queue and workload forecast.
-6. vega_session { date?, limit?, subject?, build? } to write today's review session into <hub>/.vega/session/ as an Aurora deck.
-7. Study the session via aurora_preview or browser, rating cards with 1-4.
-8. vega_sync { file? } to sync ratings from progress.jsonl back into FSRS idempotently.
-9. vega_stats { subject? } to inspect true retention, leech cards, and upcoming workload.
+5. vega_inbox { action: "list" | "ingest", hub? } for card candidates that other tools (Polaris error log and self-checks, Orion, Mira) drop into <hub>/.vega/inbox/*.jsonl: "list" previews files and validation without writing, "ingest" creates New FSRS cards (de-duplicated by key), moves files to inbox/done/ and writes rejected lines to inbox/rejected/. Vega is the single review queue.
+6. vega_due { subject?, limit?, date? } to inspect today's review queue and workload forecast.
+7. vega_session { date?, limit?, subject?, build? } to write today's review session into <hub>/.vega/session/ as an Aurora deck.
+8. Study the session via aurora_preview or browser, rating cards with 1-4.
+9. vega_sync { file? } to ingest the inbox first, then sync ratings from progress.jsonl back into FSRS idempotently.
+10. vega_stats { subject? } to inspect true retention, leech cards, and upcoming workload.
 
 Rules:
+- Single queue: producers never write cards.json or reviews.jsonl; they only drop inbox files (contract vega-card-inbox.v1, see vega_guide topic "inbox").
 - Atomic cards: exactly one idea per card; no unordered lists to recite.
 - Learner fit: learner-facing card text in the learner's language (Vietnamese by default with correct diacritics); no emoji.
 - Origin fidelity: never invent facts beyond the origin; every card must have a verifiable origin and locator.
@@ -150,7 +156,7 @@ export function createServer(): McpServer {
     {
       title: "Add Cards to Vega Collection",
       description:
-        "Validate, de-duplicate (same origin + front), assign unique IDs, initialize FSRS state, and append cards to cards.json.",
+        "Validate, de-duplicate (same origin + front, or same key), assign unique IDs, initialize FSRS state, and append cards to cards.json. Optional card key (unique across the collection) and origin.href are kept.",
       inputSchema: {
         cards: z.array(CardInputSchema).min(1).describe("Array of cards to add"),
         hub: z.string().optional().describe("Learning hub root directory (default: VEGA_HUB or D:/02_Learning_Knowledge)"),
@@ -215,7 +221,8 @@ export function createServer(): McpServer {
     "vega_delete",
     {
       title: "Soft-Delete a Card",
-      description: "Remove card from active collection and record soft deletion event in reviews.jsonl.",
+      description:
+        "Remove card from active collection and record soft deletion event in reviews.jsonl (with the card key, if any, so the inbox never re-creates it).",
       inputSchema: {
         id: z.string().min(1).describe("Card ID"),
         hub: z.string().optional().describe("Learning hub root directory"),
@@ -379,9 +386,9 @@ export function createServer(): McpServer {
   server.registerTool(
     "vega_sync",
     {
-      title: "Synchronize Review Ratings from Aurora Progress Events",
+      title: "Ingest the Card Inbox, then Synchronize Review Ratings from Aurora Progress Events",
       description:
-        "Read <collection>/session/progress.jsonl and/or an exported progress file, apply card ratings in time order to FSRS idempotently, and update sync-state.json.",
+        "First ingest <hub>/.vega/inbox/*.jsonl (same as vega_inbox ingest; the reply includes its counts), then read <collection>/session/progress.jsonl and/or an exported progress file, apply card ratings in time order to FSRS idempotently, and update sync-state.json.",
       inputSchema: {
         file: z.string().optional().describe("Optional path to exported .jsonl progress file"),
         hub: z.string().optional().describe("Learning hub root directory"),
@@ -391,6 +398,28 @@ export function createServer(): McpServer {
     async ({ file, hub }) =>
       safe(async () => {
         const res = await syncProgress({ file, hub });
+        return text(res.summary);
+      }),
+  );
+
+  /* 12. vega_inbox */
+  server.registerTool(
+    "vega_inbox",
+    {
+      title: "Card Inbox: Preview or Ingest Card Candidates from Other Tools",
+      description:
+        'Vega is the single review queue (contract vega-card-inbox.v1). Producers (Polaris error log and self-checks, Orion, Mira) drop *.jsonl card candidates into <hub>/.vega/inbox/. action "list": pending files, line counts and a validation preview (no writes). action "ingest": validate every line strictly, skip keys that already exist (active, suspended or soft-deleted), create New FSRS cards, move processed files to inbox/done/ and write invalid lines (with _error) to inbox/rejected/. Idempotent. Reports files read, cards created, duplicates and rejected lines with reasons (Vietnamese).',
+      inputSchema: {
+        action: z
+          .enum(["list", "ingest"])
+          .describe('"list" = preview without writing; "ingest" = create cards and archive the files'),
+        hub: z.string().optional().describe("Learning hub root directory (default: VEGA_HUB or D:/02_Learning_Knowledge)"),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ action, hub }) =>
+      safe(async () => {
+        const res = action === "ingest" ? await ingestInbox(hub) : await listInbox(hub);
         return text(res.summary);
       }),
   );
@@ -416,7 +445,7 @@ export function createServer(): McpServer {
             type: "text",
             text: [
               "Execute the daily spaced repetition review session:",
-              "1. Sync existing progress first: Call tool vega_sync {} to ensure cards and FSRS states are up to date.",
+              "1. Sync existing progress first: Call tool vega_sync {} to ingest the card inbox (new cards from Polaris, Orion, Mira) and ensure cards and FSRS states are up to date.",
               `2. Generate today's review deck: Call tool vega_session {${date ? ` date: "${date}",` : ""}${subject ? ` subject: "${subject}",` : ""}${hub ? ` hub: "${hub}",` : ""} build: true }.`,
               "3. Study the review session interactively:",
               "   - Live preview with auto-reload: Call tool aurora_preview { dir: \"<session_dir>\", open: true }",
@@ -507,8 +536,10 @@ Usage: node dist/vega.mjs <command> [options]
 Commands:
   session                 Generate today's review session deck (<hub>/.vega/session/)
                           Options: [--date <YYYY-MM-DD>] [--limit <n>] [--new-limit <n>] [--subject <sub>] [--no-build] [--hub <dir>] [--json]
-  sync [file]             Sync ratings from Aurora progress.jsonl / exported .jsonl into FSRS
+  sync [file]             Ingest the card inbox, then sync ratings from Aurora progress.jsonl / exported .jsonl into FSRS
                           Options: [--file <file>] [--hub <dir>] [--json]
+  inbox <list|ingest>     Preview (no writes) or ingest the card inbox (<hub>/.vega/inbox/*.jsonl from Polaris, Orion, Mira)
+                          Options: [--hub <dir>] [--json]
   due                     Show today's due queue and forecast
                           Options: [--subject <sub>] [--limit <n>] [--new-limit <n>] [--date <YYYY-MM-DD>] [--hub <dir>] [--json]
   review <id> <rating>    Submit review rating (again, hard, good, easy)
@@ -574,6 +605,23 @@ Commands:
       const hub = getArg("--hub");
 
       const res = await syncProgress({ file, hub });
+      if (isJson) {
+        console.log(JSON.stringify(res, null, 2));
+      } else {
+        console.log(res.summary);
+      }
+      return 0;
+    }
+
+    case "inbox": {
+      const action = argv[1]?.toLowerCase();
+      if (action !== "list" && action !== "ingest") {
+        console.error("Usage: vega inbox <list|ingest> [--hub <hub>] [--json]");
+        return 1;
+      }
+      const hub = getArg("--hub");
+
+      const res = action === "ingest" ? await ingestInbox(hub) : await listInbox(hub);
       if (isJson) {
         console.log(JSON.stringify(res, null, 2));
       } else {

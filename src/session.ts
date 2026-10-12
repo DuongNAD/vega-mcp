@@ -4,12 +4,72 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { getDueQueue } from "./scheduler.js";
 import {
+  type Card,
+  type OriginKind,
   type SessionOptions,
   type SessionResult,
   type SrsSlide,
   type SrsSlideOrigin,
 } from "./schema.js";
 import { errMsg, vegaPaths, writeJson } from "./util.js";
+
+/** Short Vietnamese name of each origin kind, used as the first part of the origin label on a session slide. */
+export const ORIGIN_KIND_LABELS: Record<OriginKind, string> = {
+  "polaris-fact": "Dữ kiện",
+  "polaris-errorlog": "Sổ lỗi",
+  "polaris-selfcheck": "Tự kiểm tra",
+  "aurora-notebook": "Sổ tay",
+  "aurora-quiz": "Trắc nghiệm",
+  "aurora-flashcard": "Thẻ ghi nhớ",
+  "aurora-palace": "Cung điện trí nhớ",
+  "aurora-predict": "Dự đoán",
+  "orion-attempt": "Orion",
+  "mira-stop": "Mira",
+  manual: "Thủ công",
+};
+
+const ORIGIN_LABEL_MAX = 80;
+
+/** "stop-3", "#stop-3" or "điểm dừng 3" -> "điểm dừng 3"; any other text is kept as it is. */
+function miraStopDetail(text: string): string {
+  const normalized = text.normalize("NFC").trim();
+  if (/điểm\s*dừng/i.test(normalized)) return normalized;
+  const m = normalized.match(/(?:^|[^a-z0-9])stop[\s_-]*(\d+)/i);
+  return m ? `điểm dừng ${m[1]}` : normalized;
+}
+
+/**
+ * Short Vietnamese description of where a card comes from: "<kind name> · <detail>", for example
+ * "Mira · điểm dừng 3", "Sổ lỗi · ERR_2026-10-12_ab12cd" or "Orion · <check>". The detail is the origin locator,
+ * falling back to the tail of the card key (<producer>:<scope>:<detail>), then to the deck.
+ */
+export function describeOrigin(card: Pick<Card, "origin" | "deck" | "key">): string {
+  const kind = card.origin.kind;
+  const prefix = ORIGIN_KIND_LABELS[kind] ?? kind;
+  const locator = card.origin.locator?.normalize("NFC").trim() ?? "";
+  const keyTail = (card.key?.split(":").slice(2).join(":") ?? "").trim();
+
+  let detail: string;
+  switch (kind) {
+    case "mira-stop":
+      detail = miraStopDetail(locator || keyTail) || card.deck || "";
+      break;
+    case "polaris-selfcheck": {
+      const m = card.key?.match(/:selfcheck:(.+):(\d+)$/);
+      detail = locator || (m ? `${m[1]} · mục ${m[2]}` : "") || card.deck || "";
+      break;
+    }
+    case "polaris-errorlog":
+    case "orion-attempt":
+      detail = locator || keyTail || card.deck || "";
+      break;
+    default:
+      detail = locator || card.deck || "";
+  }
+
+  const label = detail ? `${prefix} · ${detail}` : prefix;
+  return label.length > ORIGIN_LABEL_MAX ? `${label.slice(0, ORIGIN_LABEL_MAX - 3)}...` : label;
+}
 
 export function findAuroraCli(): string | null {
   const envCli = process.env.VEGA_AURORA_CLI;
@@ -64,14 +124,17 @@ export async function createSessionDeck(options: SessionOptions = {}): Promise<S
   // 3. SRS slides for each card in queue
   const srsSlides: SrsSlide[] = dueRes.queue.map((c) => {
     let originObj: SrsSlideOrigin | undefined = undefined;
-    if (c.origin) {
+    if (c.origin?.href) {
+      // The producer supplied a link that opens the exact place (e.g. a Mira player with #stop-3): pass it through.
+      originObj = { label: describeOrigin(c), href: c.origin.href };
+    } else if (c.origin) {
       let label = "";
       if (c.origin.locator) {
         label = c.deck ? `${c.deck} · ${c.origin.locator}` : c.origin.locator;
       } else if (c.deck) {
         label = c.deck;
       } else {
-        label = c.origin.kind;
+        label = ORIGIN_KIND_LABELS[c.origin.kind] ?? c.origin.kind;
       }
 
       let href: string | undefined = undefined;

@@ -99,9 +99,10 @@ Aurora deck.json (notebook/quiz/palace)
 
 1. **Khám phá ứng viên (Discovery):** Gọi `vega_candidates` với đường dẫn file `facts.json`, `errorlog.md` hoặc `deck.json`.
 2. **Biên tập & Nạp thẻ (Authoring):** Agent rà soát, tinh chỉnh câu chữ theo quy tắc soạn thẻ, sau đó gọi `vega_add` để thêm vào bộ sưu tập.
-3. **Phiên học hàng ngày với Aurora Deck (Daily Review):** Gọi `vega_session` (hoặc prompt `review_today`) để xuất bộ slide ôn tập vào `.vega/session/deck.json`. Người học mở bài ôn tập qua `aurora_preview`, lật thẻ và đánh giá qua các phím số 1-4.
-4. **Tự động đồng bộ kết quả (Sync to FSRS):** Gọi `vega_sync` để nạp toàn bộ đánh giá từ `progress.jsonl` vào thuật toán FSRS một cách bất biến (idempotent).
-5. **Giám sát & Tối ưu (Monitoring):** Định kỳ gọi `vega_stats` để theo dõi tải học tập 7 ngày tới và phát hiện các thẻ bị quên từ 6 lần trở lên (`lapses >= 6`) để tái cấu trúc.
+3. **Nhận thẻ từ các công cụ khác (Inbox):** Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại) và Mira (điểm dừng dự đoán sai) thả tệp `.jsonl` vào `.vega/inbox/`. Gọi `vega_inbox { action: "list" }` để xem trước, `vega_inbox { action: "ingest" }` để nạp (hoặc để `vega_sync` nạp). Xem mục 6.
+4. **Phiên học hàng ngày với Aurora Deck (Daily Review):** Gọi `vega_session` (hoặc prompt `review_today`) để xuất bộ slide ôn tập vào `.vega/session/deck.json`. Người học mở bài ôn tập qua `aurora_preview`, lật thẻ và đánh giá qua các phím số 1-4.
+5. **Tự động đồng bộ kết quả (Sync to FSRS):** Gọi `vega_sync` để nạp hộp thư thẻ, rồi nạp toàn bộ đánh giá từ `progress.jsonl` vào thuật toán FSRS một cách bất biến (idempotent).
+6. **Giám sát & Tối ưu (Monitoring):** Định kỳ gọi `vega_stats` để theo dõi tải học tập 7 ngày tới và phát hiện các thẻ bị quên từ 6 lần trở lên (`lapses >= 6`) để tái cấu trúc.
 
 ---
 
@@ -114,6 +115,9 @@ Aurora deck.json (notebook/quiz/palace)
 ├── cards.json         # Bộ thẻ đang hoạt động và trạng thái FSRS
 ├── reviews.jsonl      # Nhật ký ôn tập lũy tiến (append-only)
 ├── sync-state.json    # Bảng băm các sự kiện đã đồng bộ (Idempotency)
+├── inbox/             # Nơi các công cụ khác thả ứng viên thẻ (*.jsonl)
+│   ├── done/          # Tệp đã nạp xong
+│   └── rejected/      # Dòng không hợp lệ, kèm trường _error
 └── session/           # Thư mục bài ôn tập cố định
     ├── deck.json      # Bộ slide ôn tập hôm nay
     ├── index.html     # Giao diện chạy độc lập do Aurora biên dịch
@@ -122,7 +126,7 @@ Aurora deck.json (notebook/quiz/palace)
 
 ### Cấu trúc bài ôn tập Aurora SRS
 - **Title Slide:** Tiêu đề "Ôn tập hôm nay · `<date>`", phân bổ số lượng thẻ theo từng chủ đề.
-- **SRS Slide (`type: "srs"`):** Mặt trước câu hỏi (`front`), mặt sau đáp án (`back`), gợi ý (`hint`), mỏ neo trí nhớ (`hook`), và liên kết tương đối trỏ về bài học gốc (`origin`).
+- **SRS Slide (`type: "srs"`):** Mặt trước câu hỏi (`front`), mặt sau đáp án (`back`), gợi ý (`hint`), mỏ neo trí nhớ (`hook`), và liên kết tương đối trỏ về bài học gốc (`origin`). Thẻ có `origin.href` (thẻ từ hộp thư) cho `origin: { label, href }` với `href` nguyên vẹn và nhãn tiếng Việt ngắn như `Mira · điểm dừng 3`, `Sổ lỗi · ERR_2026-10-12_ab12cd`, `Orion · <phép kiểm tra>`.
 - **Summary Slide:** Bảng tổng kết số thẻ hoàn thành và lời nhắc đồng bộ.
 
 ### Phím tắt khi học với Aurora SRS
@@ -142,4 +146,19 @@ Công cụ `vega_stats` cung cấp cái nhìn toàn diện về chất lượng 
 - **True Retention (30 ngày):** Tỉ lệ nhớ thực tế trên các thẻ ở trạng thái Review trong 30 ngày gần nhất (kèm số mẫu `passed / total`).
 - **Leech Cards (`lapses >= 6`):** Các thẻ bị quên từ 6 lần trở lên, cần người học hoặc agent kiểm tra và tái cấu trúc lại nội dung.
 - **Workload Forecast:** Biểu đồ dự báo số thẻ đến hạn trong 7 ngày tiếp theo.
+
+---
+
+## 6. Hộp Thư Thẻ: Một Hàng Đợi Ôn Tập Duy Nhất (Card Inbox)
+
+Bản đầy đủ: `vega_guide { topic: "inbox" }`. Hợp đồng dùng chung: `vega-card-inbox.v1`.
+
+**Vì sao một hàng đợi?** Giãn cách các lần truy hồi giúp nhớ lâu hơn so với dồn vào một lần (Latimier, Peyre và Ramus, 2021, doi:10.1007/s10648-020-09572-8), và ôn tập cá nhân hóa theo lịch sử từng người với từng mục cho kết quả giữ lại tốt hơn lịch giãn cách chung (Lindsey và cs., 2014, doi:10.1177/0956797613504302). Nếu Polaris, Orion và Mira mỗi nơi tự nhắc ôn theo lịch cố định riêng thì cùng một kiến thức bị nhắc nhiều lần và người học tích tụ "nợ ôn tập" (đây là lập luận kỹ thuật của hệ sinh thái, không phải kết luận của hai bài báo). Vì vậy các công cụ chỉ GỬI ứng viên thẻ; Vega duy nhất xác thực, khử trùng và lên lịch bằng FSRS.
+
+**Cách hoạt động:**
+- Nhà sản xuất ghi một tệp mới `<producer>-<YYYYMMDDTHHmmss>-<6 hex>.jsonl` (UTF-8, mỗi dòng một đối tượng JSON) vào `<hub>/.vega/inbox/`, ghi nguyên tử (`.jsonl.tmp` rồi đổi tên). Không bao giờ ghi `cards.json` hay `reviews.jsonl`.
+- Mỗi dòng: `v`, `t`, `producer`, `key` (bắt đầu bằng `<producer>:`), `subject`, `deck?`, `kind?`, `front`, `back`, `hint?`, `hook?`, `origin {kind, path, locator?, href?}`, `tags?`, `reason?`. Trường lạ bị từ chối.
+- `vega_inbox { action: "ingest" }` (hoặc bước đầu của `vega_sync`) xử lý tệp theo thứ tự tên: bỏ qua dòng có `key` đã tồn tại (thẻ đang học, tạm dừng hoặc đã xóa mềm), tạo thẻ mới trạng thái New cho dòng còn lại, chuyển tệp sang `inbox/done/`, ghi dòng lỗi kèm `_error` vào `inbox/rejected/<cùng tên>`. Chạy lại không đổi gì.
+- `vega_inbox { action: "list" }` chỉ xem trước, không ghi gì. CLI: `vega inbox list|ingest [--json]`.
+- Khóa chuẩn: `polaris:<môn>:<mã mục Sổ lỗi>`, `polaris:<môn>:selfcheck:<module>:<chỉ số>`, `orion:<lab>:<phép kiểm tra>`, `mira:<trình phát>:stop-<k>`.
 

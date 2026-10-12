@@ -43,7 +43,7 @@ Vega employs **FSRS (Free Spaced Repetition Scheduler)** via the `ts-fsrs` packa
 
 1. **The agent writes good cards, Vega schedules them:** Vega proposes candidates from materials; the agent refines them following card rules (one atomic idea per card, cloze for terms, keep memory hooks, Vietnamese learner text).
 2. **Proven algorithm:** Uses `ts-fsrs` (v5.4.2, MIT) bundled into a single standalone executable.
-3. **Clean storage:** The entire collection resides in `VEGA_HUB/.vega/` (default `D:/02_Learning_Knowledge/.vega/`) with only `cards.json`, `reviews.jsonl`, `sync-state.json`, and the fixed `session/` folder using atomic writes.
+3. **Clean storage:** The entire collection resides in `VEGA_HUB/.vega/` (default `D:/02_Learning_Knowledge/.vega/`) with only `cards.json`, `reviews.jsonl`, `sync-state.json`, the fixed `session/` folder, and the `inbox/` drop folder (with `done/` and `rejected/`) using atomic writes.
 4. **Origin fidelity & Lesson links:** Every card preserves its origin (source path and locator such as "slide 12", "fact F1", "station 7") and calculates relative links back to the original lesson deck.
 
 ---
@@ -62,19 +62,37 @@ Vega turns daily spaced-repetition queues into interactive **Aurora Slides** rev
 
 ---
 
+## One Review Queue: the Card Inbox
+
+Every producer of review items in the ecosystem (Polaris error log and lesson self-checks, Orion repeated failures, Mira missed prediction stops, future Aurora exports) drops card candidates into Vega's inbox instead of scheduling reviews of its own. Evidence favours one adaptive spacing scheduler over several fixed ones (Latimier, Peyre and Ramus 2021, [doi:10.1007/s10648-020-09572-8](https://doi.org/10.1007/s10648-020-09572-8); Lindsey et al. 2014, [doi:10.1177/0956797613504302](https://doi.org/10.1177/0956797613504302)), and two schedulers create review debt (the second point is an engineering argument, not a finding of those papers). So Vega alone validates, de-duplicates and schedules the items with FSRS. Producers never write `cards.json` or `reviews.jsonl`.
+
+Contract `vega-card-inbox.v1`:
+
+- **Files:** `<hub>/.vega/inbox/<producer>-<YYYYMMDDTHHmmss>-<6 hex>.jsonl`, one new file per batch, UTF-8, one JSON object per line, written atomically (`<name>.jsonl.tmp`, then rename). `*.tmp` files, subfolders and files that are not `.jsonl` are ignored.
+- **Line:** `{v: 1, t, producer, key, subject, deck?, kind?, front, back, hint?, hook?, origin: {kind, path, locator?, href?}, tags?, reason?}`. Unknown fields are rejected. `key` is the stable dedupe key and must start with `<producer>:` (for example `polaris:Machine_Learning:ERR_2026-10-12_ab12cd`, `orion:Lab_1:check_sum`, `mira:vong-lap-for:stop-3`). `origin.href` becomes a clickable link in the lesson page, so `javascript:`, `data:` and `vbscript:` links are refused.
+- **Ingestion** (first step of `vega_sync`, or `vega_inbox { action: "ingest" }`): files are processed in name order; each line is validated strictly; a key that already exists (active, suspended or soft-deleted card) is skipped as a duplicate; every other valid line becomes a New FSRS card (`created` = the line's `t`). Processed files move to `inbox/done/`; invalid lines, with an added `_error` field, go to `inbox/rejected/<same name>`. Ingestion is idempotent, so running it again changes nothing.
+- **Preview:** `vega_inbox { action: "list" }` shows pending files, line counts and a validation preview, and writes nothing.
+- **Session decks:** when a card's origin has `href`, its `srs` slide gets `origin: {label, href}` with a short Vietnamese label such as `Mira · điểm dừng 3`, `Sổ lỗi · ERR_2026-10-12_ab12cd` or `Orion · <check>`.
+- **Soft delete:** `vega_delete` stores the card's `key` on its "deleted" line in `reviews.jsonl`, so a producer re-sending a card the learner deleted does not bring it back.
+
+Read the full rules with `vega_guide { topic: "inbox" }`.
+
+---
+
 ## Tools, Prompts & CLI Reference
 
 ### Tools (MCP Server over Stdio)
 
-- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, session integration, origin guide, and collection stats (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`).
+- `vega_guide { topic? }`: Card-writing rules with Vietnamese examples, FSRS theory, workflows, session integration, origin guide, collection stats, and the card inbox (`overview`, `rules`, `fsrs`, `workflows`, `candidates`, `origins`, `session`, `stats`, `inbox`).
 - `vega_candidates { path, from?, subject? }`: Deterministic candidate extraction from Polaris `facts.json`, `errorlog.md`, or Aurora `deck.json`.
-- `vega_add { cards, hub? }`: Validate, de-duplicate (same origin + front), assign IDs, and initialize FSRS states.
+- `vega_add { cards, hub? }`: Validate, de-duplicate (same origin + front, or same optional `key`), assign IDs, and initialize FSRS states. Cards may carry `key` and `origin.href`.
+- `vega_inbox { action: "list" | "ingest", hub? }`: Preview (no writes) or ingest the card inbox; reports files read, cards created, duplicates and rejected lines with reasons (Vietnamese).
 - `vega_edit { id, patch, hub? }`: Edit card front, back, hint, hook, tags, or subject.
 - `vega_suspend { id, suspended?, hub? }`: Pause or resume cards from due queues.
-- `vega_delete { id, hub? }`: Soft delete a card (removes from active collection and logs to review history).
+- `vega_delete { id, hub? }`: Soft delete a card (removes from active collection and logs to review history, with the card key if it has one).
 - `vega_due { subject?, limit?, new_limit?, date?, hub? }`: Today's review queue (overdue first, due today, capped new cards) and 7-day workload forecast.
 - `vega_session { date?, limit?, new_limit?, subject?, build?, hub? }`: Generate today's review session deck into `.vega/session/` and build with Aurora CLI.
-- `vega_sync { file?, hub? }`: Synchronize review ratings from `.vega/session/progress.jsonl` or exported progress file into FSRS idempotently.
+- `vega_sync { file?, hub? }`: Ingest the card inbox first (its counts are in the reply), then synchronize review ratings from `.vega/session/progress.jsonl` or exported progress file into FSRS idempotently.
 - `vega_review { id, rating, ms?, date?, via?, hub? }`: Submit review rating (`again`, `hard`, `good`, `easy`) and advance FSRS memory state.
 - `vega_stats { subject?, date?, hub? }`: View cards by state, today's reviews, learning-step agains, 30-day true retention rate (review-state only), leech cards (`lapses >= 6`), and workload forecast.
 
@@ -89,8 +107,12 @@ Vega turns daily spaced-repetition queues into interactive **Aurora Slides** rev
 # Generate today's review session deck
 node dist/vega.mjs session
 
-# Sync ratings from Aurora session progress into FSRS
+# Ingest the card inbox, then sync ratings from Aurora session progress into FSRS
 node dist/vega.mjs sync
+
+# Preview the card inbox (no writes) / ingest it (add --json for machine-readable output)
+node dist/vega.mjs inbox list
+node dist/vega.mjs inbox ingest
 
 # View today's queue
 node dist/vega.mjs due
@@ -112,6 +134,7 @@ node dist/vega.mjs guide stats
 
 ## Version History
 
+- **v0.3.0**: Vega becomes the single review queue of the MCP ecosystem. Shared card-inbox contract `vega-card-inbox.v1`: producers (Polaris, Orion, Mira, ...) drop `*.jsonl` card candidates into `<hub>/.vega/inbox/`; Vega validates strictly, de-duplicates by `key` (active, suspended and soft-deleted cards), creates New FSRS cards, moves processed files to `inbox/done/` and writes rejected lines with `_error` to `inbox/rejected/`, idempotently. New tool `vega_inbox { action: "list" | "ingest" }` and CLI `vega inbox list|ingest`; `vega_sync` ingests the inbox first and reports its counts. Cards gain an optional unique `key`; origins gain `href` and the kinds `polaris-selfcheck`, `aurora-predict`, `orion-attempt`, `mira-stop`; `vega_delete` keeps the key on its log line. Session `srs` slides carry `origin: {label, href}` for cards with an origin `href`. Guide topic `inbox`. Old `cards.json` files load unchanged. e2e: the `due` CLI check now pins `--date 2026-10-11` (it compared a hard-coded date with the real clock).
 - **v0.2.2**: Specific card fronts and KaTeX math delimiters for Aurora notebook slides (formulas get `$$...$$` delimiters for display KaTeX rendering in Aurora review sessions; fronts wrap formula LHS in `$...$`; multi-formula lines separated by `\quad`, `\qquad`, or `;` yield one card per formula; rules and hooks use "Quy tắc cốt lõi · <sub-heading>" / "Mỏ neo trí nhớ · <sub-heading>"; deck-level deduplication ensures unique fronts across all cards in a deck); guide card rules updated with KaTeX math delimiters and specific fronts guidance.
 - **v0.2.1**: True retention reporting aligned with FSRS / Anki standard: only reviews of cards in Review state count towards retention (`passed / (passed + failed)`); learning and relearning steps are excluded; separate counter for learning-step agains in `vega_stats` and `vega_sync`; guide topic `stats`; backward-compatible parsing and derivation for legacy review logs without stored states.
 - **v0.2.0**: Integrated Aurora Slides SRS review sessions (`vega_session`), automated idempotent sync from `progress.jsonl` (`vega_sync`), fixed `.vega/session/` directory reuse, prompts `review_today` and `make_cards`.

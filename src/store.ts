@@ -152,6 +152,32 @@ export async function readReviewLogs(hub?: string): Promise<ReviewLogEntry[]> {
   return logs;
 }
 
+/**
+ * Keys of soft-deleted cards. `deleteCard` stores the card key on its "deleted" review-log line, so the
+ * inbox de-duplication (contract vega-card-inbox.v1) still recognizes a card the learner deleted.
+ */
+export async function readDeletedKeys(hub?: string): Promise<Set<string>> {
+  const p = vegaPaths(hub);
+  const keys = new Set<string>();
+  if (!existsSync(p.reviewsJsonl)) {
+    return keys;
+  }
+  const content = await readFile(p.reviewsJsonl, "utf8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.includes('"deleted"')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as { rating?: unknown; key?: unknown };
+      if (parsed.rating === "deleted" && typeof parsed.key === "string" && parsed.key) {
+        keys.add(parsed.key);
+      }
+    } catch {
+      // Skip invalid JSON log lines
+    }
+  }
+  return keys;
+}
+
 export async function addCards(
   inputs: CardInput[],
   hub?: string,
@@ -160,18 +186,31 @@ export async function addCards(
   const added: Card[] = [];
   let skipped = 0;
 
+  // Card keys are unique across the collection: active, suspended and soft-deleted cards all hold their key.
+  const usedKeys = new Set<string>();
+  for (const existing of collection.cards) {
+    if (existing.key) usedKeys.add(existing.key);
+  }
+  const wantsKeys = inputs.some((raw) => typeof (raw as { key?: unknown } | null)?.key === "string");
+  if (wantsKeys) {
+    for (const deletedKey of await readDeletedKeys(hub)) usedKeys.add(deletedKey);
+  }
+
   for (const raw of inputs) {
     const input = CardInputSchema.parse(raw);
     const originLocator = input.origin.locator ?? "";
+    const key = input.key?.trim() || undefined;
 
     // Check duplicate
-    const isDup = collection.cards.some(
-      (existing) =>
-        existing.origin.kind === input.origin.kind &&
-        existing.origin.path === input.origin.path &&
-        (existing.origin.locator ?? "") === originLocator &&
-        existing.front.trim().toLowerCase() === input.front.trim().toLowerCase(),
-    );
+    const isDup =
+      (key !== undefined && usedKeys.has(key)) ||
+      collection.cards.some(
+        (existing) =>
+          existing.origin.kind === input.origin.kind &&
+          existing.origin.path === input.origin.path &&
+          (existing.origin.locator ?? "") === originLocator &&
+          existing.front.trim().toLowerCase() === input.front.trim().toLowerCase(),
+      );
 
     if (isDup) {
       skipped++;
@@ -192,15 +231,18 @@ export async function addCards(
         kind: input.origin.kind,
         path: input.origin.path,
         locator: input.origin.locator,
+        ...(input.origin.href ? { href: input.origin.href } : {}),
       },
       tags: input.tags ?? [],
       created: createdTime.toISOString(),
       suspended: input.suspended,
+      ...(key ? { key } : {}),
       fsrs: initFsrsState(createdTime),
     };
 
     collection.cards.push(newCard);
     added.push(newCard);
+    if (key) usedKeys.add(key);
   }
 
   if (added.length > 0) {
@@ -266,7 +308,7 @@ export async function deleteCard(id: string, hub?: string): Promise<{ deleted: C
     throw new Error(`Failed to delete card with ID: ${id}`);
   }
 
-  // Soft delete into the log
+  // Soft delete into the log. The card key (when it has one) rides along so the inbox never re-creates it.
   await appendReviewLog(
     {
       t: nowIso(),
@@ -276,6 +318,7 @@ export async function deleteCard(id: string, hub?: string): Promise<{ deleted: C
       due_before: deleted.fsrs.due,
       elapsed_days: 0,
       via: "tool",
+      ...(deleted.key ? { key: deleted.key } : {}),
     },
     hub,
   );

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-export const VERSION = "0.2.2";
+export const VERSION = "0.3.0";
 
 export function resolveHubDir(hub?: string): string {
   const envHub = process.env.VEGA_HUB;
@@ -25,10 +25,14 @@ export function vegaPaths(hub?: string): {
   sessionDir: string;
   sessionDeckJson: string;
   sessionProgressJsonl: string;
+  inboxDir: string;
+  inboxDoneDir: string;
+  inboxRejectedDir: string;
 } {
   const root = resolveHubDir(hub);
   const vegaDir = join(root, ".vega");
   const sessionDir = join(vegaDir, "session");
+  const inboxDir = join(vegaDir, "inbox");
   return {
     root,
     vegaDir,
@@ -38,6 +42,9 @@ export function vegaPaths(hub?: string): {
     sessionDir,
     sessionDeckJson: join(sessionDir, "deck.json"),
     sessionProgressJsonl: join(sessionDir, "progress.jsonl"),
+    inboxDir,
+    inboxDoneDir: join(inboxDir, "done"),
+    inboxRejectedDir: join(inboxDir, "rejected"),
   };
 }
 

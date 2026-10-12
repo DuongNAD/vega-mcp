@@ -1,6 +1,6 @@
 {
   "name": "vega-mcp",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Vega MCP: Adaptive spaced repetition memory engine (FSRS) across Polaris & Aurora learning ecosystems",
   "type": "module",
   "bin": {
