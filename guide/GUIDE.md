@@ -162,3 +162,27 @@ Bản đầy đủ: `vega_guide { topic: "inbox" }`. Hợp đồng dùng chung: 
 - `vega_inbox { action: "list" }` chỉ xem trước, không ghi gì. CLI: `vega inbox list|ingest [--json]`.
 - Khóa chuẩn: `polaris:<môn>:<mã mục Sổ lỗi>`, `polaris:<môn>:selfcheck:<module>:<chỉ số>`, `orion:<lab>:<phép kiểm tra>`, `mira:<trình phát>:stop-<k>`, `rigel:<môn hoặc khóa học>:<ref>:<8 hex đầu của sha1(front)>`.
 
+---
+
+## 7. Hệ Sinh Thái (Ecosystem)
+
+All projects by DuongNAD:
+
+| Project | Role | Repository |
+| :--- | :--- | :--- |
+| **Polaris** | Course architect: sources, facts with locators, roadmap, schedule, error log | [polaris-mcp](https://github.com/DuongNAD/polaris-mcp) |
+| **Aurora Slides** | Keynote-style lessons: quizzes, predict and trace slides, progress events | [aurora-slides-mcp](https://github.com/DuongNAD/aurora-slides-mcp) |
+| **Vega** | FSRS memory engine and the single review queue (card inbox) | [vega-mcp](https://github.com/DuongNAD/vega-mcp) |
+| **Orion** | Practice labs with real tests, tutoring ladder and PRIMM warm-up | [orion-mcp](https://github.com/DuongNAD/orion-mcp) |
+| **Mira** | Code-tracing lab: real Python traces, line-by-line players with prediction gates | [mira-mcp](https://github.com/DuongNAD/mira-mcp) |
+| **Rigel** | Grounded tutor: answers from the learner's lesson materials with [ref] citations | [rigel-mcp](https://github.com/DuongNAD/rigel-mcp) |
+| **Sirius** | Execution loop: deadlines, triage, today router, session timer, weekly review | [sirius-mcp](https://github.com/DuongNAD/sirius-mcp) |
+| **Constellation** | MCP registration, health checks and shared contracts | [constellation-mcp](https://github.com/DuongNAD/constellation-mcp) |
+| **SmartDrive-OS** | SSD governance, index and learning search | [smart-drive-os](https://github.com/DuongNAD/smart-drive-os) |
+
+### Connections
+
+- Card inbox producers (`vega-card-inbox.v1`): Polaris (error log, self-checks), Orion (repeated failures), Mira (missed prediction stops), Rigel (cards from lesson materials).
+- Aurora: review sessions are Aurora decks; `card` events sync back with `vega_sync`.
+- Sirius: reads `reviews.jsonl` as study evidence.
+

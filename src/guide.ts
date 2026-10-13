@@ -276,11 +276,15 @@ Báo cáo gồm: số tệp đã đọc, thẻ tạo mới, thẻ trùng, dòng 
 Vega là động cơ ghi nhớ và lặp lại giãn cách (Adaptive Spaced Repetition) với thuật toán FSRS cho toàn bộ hệ sinh thái học tập của người học.
 
 Ecosystem (bởi DuongNAD):
-- **Polaris:** Course architect (https://github.com/DuongNAD/polaris-mcp)
-- **Aurora Slides:** Lessons & presentation engine (https://github.com/DuongNAD/aurora-slides-mcp)
-- **SmartDrive-OS:** SSD governance & learning search (https://github.com/DuongNAD/smart-drive-os)
-- **Constellation:** MCP registration & ecosystem contracts (https://github.com/DuongNAD/constellation-mcp)
-- **Vega:** Adaptive spaced repetition engine (https://github.com/DuongNAD/vega-mcp)
+- **Polaris:** Course architect: sources, facts with locators, roadmap, schedule, error log (https://github.com/DuongNAD/polaris-mcp)
+- **Aurora Slides:** Keynote-style lessons: quizzes, predict and trace slides, progress events (https://github.com/DuongNAD/aurora-slides-mcp)
+- **Vega:** FSRS memory engine and the single review queue (card inbox) (https://github.com/DuongNAD/vega-mcp)
+- **Orion:** Practice labs with real tests, tutoring ladder and PRIMM warm-up (https://github.com/DuongNAD/orion-mcp)
+- **Mira:** Code-tracing lab: real Python traces, line-by-line players with prediction gates (https://github.com/DuongNAD/mira-mcp)
+- **Rigel:** Grounded tutor: answers from the learner's lesson materials with [ref] citations (https://github.com/DuongNAD/rigel-mcp)
+- **Sirius:** Execution loop: deadlines, triage, today router, session timer, weekly review (https://github.com/DuongNAD/sirius-mcp)
+- **Constellation:** MCP registration, health checks and shared contracts (https://github.com/DuongNAD/constellation-mcp)
+- **SmartDrive-OS:** SSD governance, index and learning search (https://github.com/DuongNAD/smart-drive-os)
 
 Available guide topics:
 - \`rules\`: Card-writing rules with Vietnamese examples (Quy tắc soạn thẻ chuẩn)

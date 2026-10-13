@@ -14,15 +14,25 @@ Vega là động cơ ghi nhớ và lặp lại giãn cách thích ứng (Adaptiv
 
 ## Hệ Sinh Thái (Ecosystem)
 
-Toàn bộ dự án được phát triển bởi DuongNAD:
+Mọi dự án của DuongNAD:
 
-| Dự án | Vai trò | Kho mã nguồn |
+| Dự án | Vai trò | Kho mã |
 | :--- | :--- | :--- |
-| **Polaris** | Kiến trúc sư lộ trình & giáo trình học tập | [polaris-mcp](https://github.com/DuongNAD/polaris-mcp) |
-| **Aurora Slides** | Động cơ soạn bài giảng & trình diễn tương tác | [aurora-slides-mcp](https://github.com/DuongNAD/aurora-slides-mcp) |
-| **SmartDrive-OS** | Quản trị dữ liệu SSD & tìm kiếm học liệu | [smart-drive-os](https://github.com/DuongNAD/smart-drive-os) |
-| **Constellation** | Quản lý đăng ký MCP & hợp đồng hệ sinh thái | [constellation-mcp](https://github.com/DuongNAD/constellation-mcp) |
-| **Vega** | Động cơ lặp lại giãn cách thích ứng (FSRS) | [vega-mcp](https://github.com/DuongNAD/vega-mcp) |
+| **Polaris** | Kiến trúc khóa học: nguồn, dữ kiện có vị trí trích, lộ trình, lịch học, Sổ lỗi | [polaris-mcp](https://github.com/DuongNAD/polaris-mcp) |
+| **Aurora Slides** | Bài học kiểu keynote: trắc nghiệm, slide dự đoán và dò code, sự kiện tiến độ | [aurora-slides-mcp](https://github.com/DuongNAD/aurora-slides-mcp) |
+| **Vega** | Bộ nhớ FSRS và hàng đợi ôn tập duy nhất (hộp thư thẻ) | [vega-mcp](https://github.com/DuongNAD/vega-mcp) |
+| **Orion** | Lab thực hành chấm bằng test thật, bậc thang gợi ý, bậc khởi động PRIMM | [orion-mcp](https://github.com/DuongNAD/orion-mcp) |
+| **Mira** | Dò code: trace Python thật, trình phát từng dòng có điểm dừng dự đoán | [mira-mcp](https://github.com/DuongNAD/mira-mcp) |
+| **Rigel** | Gia sư bám tài liệu: trả lời từ tài liệu bài học, có trích dẫn [ref] | [rigel-mcp](https://github.com/DuongNAD/rigel-mcp) |
+| **Sirius** | Vòng thực thi: hạn chót, phân loại việc, hôm nay học gì, bấm giờ, tổng kết tuần | [sirius-mcp](https://github.com/DuongNAD/sirius-mcp) |
+| **Constellation** | Đăng ký MCP, kiểm tra sức khỏe, hợp đồng dữ liệu chung | [constellation-mcp](https://github.com/DuongNAD/constellation-mcp) |
+| **SmartDrive-OS** | Quản trị SSD, chỉ mục và tìm kiếm tài liệu học | [smart-drive-os](https://github.com/DuongNAD/smart-drive-os) |
+
+### Kết nối
+
+- Nhà sản xuất của hộp thư thẻ (`vega-card-inbox.v1`): Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại), Mira (điểm dừng dự đoán sai), Rigel (thẻ từ tài liệu bài học).
+- Aurora: phiên ôn tập là bộ slide Aurora; sự kiện `card` được đồng bộ ngược về Vega bằng `vega_sync`.
+- Sirius: đọc `reviews.jsonl` làm bằng chứng học tập.
 
 ---
 
