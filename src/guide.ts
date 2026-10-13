@@ -83,7 +83,7 @@ export function getGuideTopic(topic?: string): string {
    - Gọi \`vega_add { cards: [...] }\` để lưu vào bộ sưu tập. Hệ thống tự động khử trùng lặp và gán ID + trạng thái FSRS ban đầu.
 
 3. **Nạp thẻ từ hộp thư (Inbox):**
-   - Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại) và Mira (điểm dừng dự đoán sai) thả tệp \`.jsonl\` vào \`<hub>/.vega/inbox/\`. Họ không bao giờ ghi \`cards.json\` hay \`reviews.jsonl\`.
+   - Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại), Mira (điểm dừng dự đoán sai) và Rigel (câu hỏi có nguồn dẫn từ tài liệu bài học) thả tệp \`.jsonl\` vào \`<hub>/.vega/inbox/\`. Họ không bao giờ ghi \`cards.json\` hay \`reviews.jsonl\`.
    - Xem trước (không ghi gì): \`vega_inbox { action: "list" }\`. Nạp: \`vega_inbox { action: "ingest" }\`, hoặc gọi \`vega_sync\` (luôn nạp hộp thư trước khi áp dụng đánh giá).
    - Thẻ mới vào hàng đợi trong hạn mức thẻ mới mỗi ngày của \`vega_due\`. Chi tiết: \`vega_guide { topic: "inbox" }\`.
 
@@ -130,6 +130,7 @@ Các loại \`kind\`:
 - \`aurora-predict\`: Bài tập dự đoán kết quả chạy mã của Aurora (gửi qua hộp thư).
 - \`orion-attempt\`: Lỗi lặp lại trong lab của Orion (locator: tên phép kiểm tra; gửi qua hộp thư).
 - \`mira-stop\`: Điểm dừng dự đoán sai trong trình phát Mira (locator: \`stop-3\`; gửi qua hộp thư).
+- \`rigel-ref\`: Đoạn tài liệu bài học có thể trích dẫn của Rigel (path: đường dẫn tuyệt đối của tệp nguồn; locator: \`D3#12 · slide 7\`; gửi qua hộp thư; nhãn ôn tập \`Tài liệu · <locator>\`).
 - \`manual\`: Thẻ do người học hoặc agent tự thêm thủ công.
 
 Hai trường tùy chọn khác:
@@ -190,7 +191,7 @@ Hai trường tùy chọn khác:
     case "inbox":
       return `# Vega Card Inbox - Một Hàng Đợi Ôn Tập Duy Nhất (Hộp Thư Thẻ)
 
-Hợp đồng: \`vega-card-inbox.v1\` (dùng chung cho Vega, Polaris, Orion, Mira, Constellation).
+Hợp đồng: \`vega-card-inbox.v1\` (dùng chung cho Vega, Polaris, Orion, Mira, Rigel, Constellation).
 
 ## 1. Vì sao chỉ một hàng đợi?
 - Giãn cách các lần truy hồi giúp nhớ lâu hơn so với dồn vào một lần (Latimier, Peyre và Ramus, 2021, doi:10.1007/s10648-020-09572-8).
@@ -203,6 +204,7 @@ Hợp đồng: \`vega-card-inbox.v1\` (dùng chung cho Vega, Polaris, Orion, Mir
 | Polaris | mục trong Sổ lỗi; câu tự kiểm tra cuối bài | \`polaris-errorlog\`, \`polaris-selfcheck\` |
 | Orion | lỗi lặp lại trong lab | \`orion-attempt\` |
 | Mira | điểm dừng dự đoán sai | \`mira-stop\` |
+| Rigel (rigel-mcp) | câu hỏi có nguồn dẫn từ tài liệu bài học (\`origin.path\` = đường dẫn tuyệt đối của tệp nguồn, \`locator\` dạng \`D3#12 · slide 7\`) | \`rigel-ref\` |
 | Aurora, Sirius, thủ công | dự đoán sai, trắc nghiệm sai, thẻ viết tay | \`aurora-predict\`, \`aurora-quiz\`, \`manual\` |
 
 Nhà sản xuất không bao giờ ghi \`.vega/cards.json\` hay \`.vega/reviews.jsonl\`.
@@ -218,7 +220,7 @@ Trường của mỗi dòng (trường lạ bị từ chối):
 | --- | --- |
 | \`v\` | bắt buộc, số nguyên \`1\` |
 | \`t\` | bắt buộc, ISO 8601 có múi giờ (\`Z\` hoặc \`+07:00\`); thành \`created\` của thẻ |
-| \`producer\` | bắt buộc: \`polaris\`, \`orion\`, \`mira\`, \`aurora\`, \`sirius\`, \`manual\` |
+| \`producer\` | bắt buộc: \`polaris\`, \`orion\`, \`mira\`, \`aurora\`, \`sirius\`, \`rigel\`, \`manual\` |
 | \`key\` | bắt buộc, 1-200 ký tự, khóa chống trùng ổn định, PHẢI bắt đầu bằng \`<producer>:\` |
 | \`subject\` | bắt buộc, 1-120 ký tự (tên thư mục môn như \`Machine_Learning\`, hoặc tên hiển thị) |
 | \`deck\` | tùy chọn, tối đa 120 ký tự (bài, module, lab hoặc tên trình phát) |
@@ -226,7 +228,7 @@ Trường của mỗi dòng (trường lạ bị từ chối):
 | \`front\` | bắt buộc, 1-600 ký tự, tiếng Việt, cho phép markup nội dòng (đậm, mã, toán, \`[[cloze]]\` với kind cloze); một ý một thẻ; không emoji |
 | \`back\` | bắt buộc, 0-1200 ký tự |
 | \`hint\`, \`hook\` | tùy chọn, tối đa 200 ký tự |
-| \`origin\` | bắt buộc: \`kind\` (\`polaris-fact\`, \`polaris-errorlog\`, \`polaris-selfcheck\`, \`aurora-quiz\`, \`aurora-predict\`, \`orion-attempt\`, \`mira-stop\`, \`manual\`), \`path\` (1-400, tệp hoặc thư mục nguồn), \`locator\` (tùy chọn, tối đa 120), \`href\` (tùy chọn, tối đa 400, liên kết mở đúng chỗ nguồn; không dùng giao thức \`javascript:\`, \`data:\`, \`vbscript:\`) |
+| \`origin\` | bắt buộc: \`kind\` (\`polaris-fact\`, \`polaris-errorlog\`, \`polaris-selfcheck\`, \`aurora-quiz\`, \`aurora-predict\`, \`orion-attempt\`, \`mira-stop\`, \`rigel-ref\`, \`manual\`), \`path\` (1-400, tệp hoặc thư mục nguồn), \`locator\` (tùy chọn, tối đa 120), \`href\` (tùy chọn, tối đa 400, liên kết mở đúng chỗ nguồn; không dùng giao thức \`javascript:\`, \`data:\`, \`vbscript:\`) |
 | \`tags\` | tùy chọn, tối đa 10 phần tử, mỗi phần tử 1-40 ký tự |
 | \`reason\` | tùy chọn, tối đa 200 ký tự; lý do tạo thẻ, hiện trong báo cáo nạp (không lưu vào thẻ) |
 
@@ -240,6 +242,7 @@ Ví dụ một dòng:
 - Tự kiểm tra Polaris: \`polaris:<tên thư mục môn>:selfcheck:<mã module>:<chỉ số>\`.
 - Orion: \`orion:<tên thư mục lab>:<khóa phép kiểm tra>\`.
 - Mira: \`mira:<slug trình phát>:stop-<k>\`.
+- Rigel: \`rigel:<môn hoặc khóa học>:<ref>:<8 hex đầu của sha1(front)>\`, ví dụ \`rigel:GCI_World_2026_September:D3#12:9f2c1a0b\`.
 Khóa phải ổn định: cùng một sự kiện luôn cho cùng một khóa, để gửi lại không tạo thẻ trùng.
 
 ## 5. Vega làm gì với từng dòng
@@ -287,7 +290,7 @@ Available guide topics:
 - \`origins\`: Origin tracking and locators (Truy xuất nguồn gốc)
 - \`session\`: Daily review sessions as Aurora decks & FSRS sync (Phiên ôn tập & Đồng bộ)
 - \`stats\`: Collection statistics, True Retention definition vs learning steps, and leeches (Thống kê ghi nhớ & Tỉ lệ nhớ thực tế)
-- \`inbox\`: Single review queue: how Polaris, Orion and Mira send card candidates (\`.vega/inbox/*.jsonl\`), file format, keys, and what Vega does with each line (Hộp thư thẻ & hàng đợi duy nhất)
+- \`inbox\`: Single review queue: how Polaris, Orion, Mira and Rigel send card candidates (\`.vega/inbox/*.jsonl\`), file format, keys, and what Vega does with each line (Hộp thư thẻ & hàng đợi duy nhất)
 
 Tool \`vega_inbox { action: "list" | "ingest" }\` and \`vega_sync\` read the inbox; Vega is the single review queue of the ecosystem.`;
   }

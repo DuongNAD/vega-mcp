@@ -1,7 +1,8 @@
 /**
  * Card inbox: the one place where review items produced by the rest of the ecosystem enter Vega
- * (Polaris error log and self-checks, Orion repeated failures, Mira missed prediction stops, ...).
- * Contract: vega-card-inbox.v1.
+ * (Polaris error log and self-checks, Orion repeated failures, Mira missed prediction stops, Rigel questions
+ * grounded in lesson files, ...).
+ * Contract: vega-card-inbox.v1 (amendment 2026-10-13: producer "rigel", origin kind "rigel-ref"; nothing else changed).
  *
  *   <hub>/.vega/inbox/<producer>-<YYYYMMDDTHHmmss>-<6 hex>.jsonl   one JSON object per line
  *   <hub>/.vega/inbox/done/                                         processed files

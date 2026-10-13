@@ -14,6 +14,7 @@ export const ORIGIN_KINDS = [
   "aurora-predict",
   "orion-attempt",
   "mira-stop",
+  "rigel-ref",
   "manual",
 ] as const;
 export type OriginKind = (typeof ORIGIN_KINDS)[number];
@@ -319,13 +320,18 @@ export interface SyncResult {
 
 /* ───────── Card Inbox (contract vega-card-inbox.v1) ───────── */
 
-export const INBOX_PRODUCERS = ["polaris", "orion", "mira", "aurora", "sirius", "manual"] as const;
+/** Amendment 2026-10-13 (still v1): `rigel` = Rigel, grounded Q&A over the learner's lesson materials. */
+export const INBOX_PRODUCERS = ["polaris", "orion", "mira", "aurora", "sirius", "rigel", "manual"] as const;
 export type InboxProducer = (typeof INBOX_PRODUCERS)[number];
 
 export const INBOX_CARD_KINDS = ["basic", "cloze", "reverse"] as const;
 export type InboxCardKind = (typeof INBOX_CARD_KINDS)[number];
 
-/** Origin kinds a producer may put in an inbox line (a subset of ORIGIN_KINDS). */
+/**
+ * Origin kinds a producer may put in an inbox line (a subset of ORIGIN_KINDS).
+ * Amendment 2026-10-13 (still v1): `rigel-ref` = a citable chunk of a lesson file (path = absolute source file,
+ * locator such as "D3#12 · slide 7").
+ */
 export const INBOX_ORIGIN_KINDS = [
   "polaris-fact",
   "polaris-errorlog",
@@ -334,6 +340,7 @@ export const INBOX_ORIGIN_KINDS = [
   "aurora-predict",
   "orion-attempt",
   "mira-stop",
+  "rigel-ref",
   "manual",
 ] as const satisfies readonly OriginKind[];
 export type InboxOriginKind = (typeof INBOX_ORIGIN_KINDS)[number];

@@ -12,7 +12,7 @@
  *   node dist/vega.mjs candidates <f>  -> CLI extract card candidates
  *   node dist/vega.mjs add <f>         -> CLI add cards
  *   node dist/vega.mjs guide [topic]   -> CLI view guide
- *   node dist/vega.mjs version         -> 0.3.0
+ *   node dist/vega.mjs version         -> 0.3.1
  *   node dist/vega.mjs help            -> CLI command list
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -87,7 +87,7 @@ Workflow:
 2. vega_candidates { path, from? } to extract raw candidate cards from Polaris facts/error logs or Aurora decks.
 3. Rewrite candidates following card rules (atomic idea, cloze for terms, keep memory hook, Vietnamese learner text).
 4. vega_add { cards } to validate, de-duplicate, and assign initial FSRS states.
-5. vega_inbox { action: "list" | "ingest", hub? } for card candidates that other tools (Polaris error log and self-checks, Orion, Mira) drop into <hub>/.vega/inbox/*.jsonl: "list" previews files and validation without writing, "ingest" creates New FSRS cards (de-duplicated by key), moves files to inbox/done/ and writes rejected lines to inbox/rejected/. Vega is the single review queue.
+5. vega_inbox { action: "list" | "ingest", hub? } for card candidates that other tools (Polaris error log and self-checks, Orion, Mira, Rigel) drop into <hub>/.vega/inbox/*.jsonl: "list" previews files and validation without writing, "ingest" creates New FSRS cards (de-duplicated by key), moves files to inbox/done/ and writes rejected lines to inbox/rejected/. Vega is the single review queue.
 6. vega_due { subject?, limit?, date? } to inspect today's review queue and workload forecast.
 7. vega_session { date?, limit?, subject?, build? } to write today's review session into <hub>/.vega/session/ as an Aurora deck.
 8. Study the session via aurora_preview or browser, rating cards with 1-4.
@@ -538,7 +538,7 @@ Commands:
                           Options: [--date <YYYY-MM-DD>] [--limit <n>] [--new-limit <n>] [--subject <sub>] [--no-build] [--hub <dir>] [--json]
   sync [file]             Ingest the card inbox, then sync ratings from Aurora progress.jsonl / exported .jsonl into FSRS
                           Options: [--file <file>] [--hub <dir>] [--json]
-  inbox <list|ingest>     Preview (no writes) or ingest the card inbox (<hub>/.vega/inbox/*.jsonl from Polaris, Orion, Mira)
+  inbox <list|ingest>     Preview (no writes) or ingest the card inbox (<hub>/.vega/inbox/*.jsonl from Polaris, Orion, Mira, Rigel)
                           Options: [--hub <dir>] [--json]
   due                     Show today's due queue and forecast
                           Options: [--subject <sub>] [--limit <n>] [--new-limit <n>] [--date <YYYY-MM-DD>] [--hub <dir>] [--json]

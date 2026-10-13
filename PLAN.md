@@ -24,7 +24,7 @@ learner studies with memory anchors and recall walks; Vega turns those anchors i
    default parameters and a desired retention of 0.9 (configurable); the optimizer is a later phase.
 3. Few files: the collection lives in one folder (default <hub>/.vega/, hub = VEGA_HUB or D:/02_Learning_Knowledge):
    cards.json (cards and their FSRS state) and reviews.jsonl (append-only review log); atomic writes; no micro-files
-   on the exFAT drive. Producers (Polaris, Orion, Mira) never write these two files: they drop `*.jsonl` batches into
+   on the exFAT drive. Producers (Polaris, Orion, Mira, Rigel) never write these two files: they drop `*.jsonl` batches into
    `<hub>/.vega/inbox/` (contract `vega-card-inbox.v1`) and only Vega ingests them, so there is one review queue.
 4. Evidence and links: every card keeps its origin (subject, source file, locator such as "slide 7", fact F12,
    "p. 3", palace station) so the learner can jump back to the lesson.
@@ -35,16 +35,20 @@ learner studies with memory anchors and recall walks; Vega turns those anchors i
 ## Data
 Card: `{id, subject, deck?, kind: basic | cloze | palace | reverse, front, back, hint?, hook? (memory anchor),
 origin: {kind: polaris-fact | polaris-errorlog | polaris-selfcheck | aurora-notebook | aurora-quiz | aurora-flashcard |
-aurora-palace | aurora-predict | orion-attempt | mira-stop | manual, path, locator?, href?}, tags, created, suspended?,
+aurora-palace | aurora-predict | orion-attempt | mira-stop | rigel-ref | manual, path, locator?, href?}, tags, created, suspended?,
 key? (stable dedupe key from a producer, 1-200 chars, unique across the collection when present), fsrs: {due,
 stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps}}`.
 Review log line: `{t, card, rating: again | hard | good | easy | deleted, state_before, due_before, elapsed_days, ms?,
 via: tool | aurora, key? (only on "deleted" lines, so the inbox still recognizes a soft-deleted card)}`.
 Inbox line (contract `vega-card-inbox.v1`, strict, unknown fields rejected): `{v: 1, t, producer: polaris | orion |
-mira | aurora | sirius | manual, key (starts with "<producer>:"), subject, deck?, kind?: basic | cloze | reverse, front
+mira | aurora | sirius | rigel | manual, key (starts with "<producer>:"), subject, deck?, kind?: basic | cloze | reverse, front
 (1-600), back (0-1200), hint?, hook?, origin: {kind, path, locator?, href?}, tags? (<= 10), reason?}`; `reason` is
 validated and shown in the ingest report but not stored on the card. `origin.href` is a clickable link in the lesson
 page, so `javascript:`, `data:` and `vbscript:` links are refused (stricter than the contract, which only caps the length).
+Amendment 2026-10-13 (v0.3.1, backward compatible, still v1): producer `rigel` (Rigel, grounded Q&A over the learner's
+lesson materials; key `rigel:<subject or course>:<ref>:<first 8 hex of sha1(front)>`) and origin kind `rigel-ref` (a
+citable chunk of a lesson file: `path` = absolute source file, `locator` = `<ref> · <slide/page/section>`, `href`
+optional). Session label of a rigel-ref card: `Tài liệu · <locator>`.
 
 ## Tools (v0.1) and CLI
 - `vega_guide {topic?}`: card-writing rules (with examples in Vietnamese), FSRS in plain words, workflows.
@@ -69,7 +73,9 @@ counts and validation preview without writing; ingest = validate, de-duplicate b
 soft-deleted cards, create New cards, move processed files to `inbox/done/`, write rejected lines with `_error` to
 `inbox/rejected/<same name>`; idempotent), `vega_sync` ingests the inbox first and reports its counts, CLI
 `vega inbox list|ingest [--json]`, session `srs` slides get `origin: {label, href}` when the card origin has `href`,
-guide topic `inbox`. Later: FSRS parameter optimization from the review log; Anki export (.apkg) and import.
+guide topic `inbox`. v0.3.1 (contract amendment 2026-10-13): the inbox validator, the card origin kinds and the `vega_add`
+input accept the producer `rigel` and the origin kind `rigel-ref`; session label `Tài liệu · <locator>`; guide topics
+`inbox` and `origins` list them. Later: FSRS parameter optimization from the review log; Anki export (.apkg) and import.
 
 ## Tests (e2e with the MCP SDK client, collection under %TEMP%)
 FSRS behaviour against ts-fsrs for a fixed card and fixed dates (intervals after again/hard/good/easy); candidates
@@ -79,7 +85,9 @@ folder is written. Inbox: a valid file ingested (cards with key, origin href, st
 against a suspended and a soft-deleted card), invalid lines rejected with reasons into `rejected/`, unknown field
 rejected, processed file moved to `done/`, `.tmp` ignored, second ingest a no-op, `vega_sync` ingests and reports
 counts, `vega_due` shows ingested New cards within the new-card limit, session slides carry origin href and label, an
-old `cards.json` without the new fields loads unchanged, `vega_inbox list` makes no writes.
+old `cards.json` without the new fields loads unchanged, `vega_inbox list` makes no writes. Rigel producer (v0.3.1): a
+valid rigel line ingested with its key and origin, a rigel line with a wrong key prefix or an origin kind outside the
+enum rejected into `rejected/`, `vega_add` accepts `rigel-ref`, session slide label `Tài liệu · <locator>`, guide topics.
 
 ## Status
 - 2026-10-11: v0.1 built and tested (9 tools, CLI, FSRS with ts-fsrs@5.4.2, deterministic candidate extraction with origins, atomic writes, e2e passing).
@@ -87,3 +95,4 @@ old `cards.json` without the new fields loads unchanged, `vega_inbox list` makes
 - 2026-10-11: v0.2.1 complete (FSRS True Retention reporting: true retention strictly calculated over review-state reviews only, excluding learning and relearning steps; separate counter for learning-step agains today in `vega_stats` and `vega_sync`; backward-compatible review log parsing and derivation for lines without stored states; guide topic `stats`; e2e tests passing).
 - 2026-10-11: v0.2.2 complete (Specific candidate card fronts and KaTeX math delimiters for Aurora notebook pages: formula cards use `$$...$$` delimiters for display KaTeX rendering in Aurora review sessions; fronts wrap LHS in `$...$`; multi-formula lines separated by `\quad`, `\qquad`, or `;` split into atomic cards holding one formula each; rule `! ` and hook `@ ` lines use "Quy tắc cốt lõi · <sub-heading>" / "Mỏ neo trí nhớ · <sub-heading>"; deck-level candidate deduplication ensures no duplicate fronts; updated guide card rules; e2e tests passing).
 - 2026-10-12: v0.3.0 complete (Vega is the single review queue: shared card-inbox contract `vega-card-inbox.v1`; 12 tools, new `vega_inbox { action: "list" | "ingest" }` and CLI `vega inbox list|ingest`; `vega_sync` ingests the inbox first and reports counts; cards gain optional unique `key`, origins gain `href` and the kinds `polaris-selfcheck`, `aurora-predict`, `orion-attempt`, `mira-stop`; `vega_delete` stores the key on its "deleted" log line so soft-deleted cards are never re-created; session `srs` slides carry `origin: {label, href}` for cards with an origin `href`; guide topic `inbox` with the evidence for one adaptive queue; old `cards.json` loads unchanged; e2e 207 checks passing (baseline 83); test fix: the e2e `due` CLI check compared a hard-coded date with the real clock and failed on every day except 2026-10-11, it now passes `--date 2026-10-11`).
+- 2026-10-13: v0.3.1 complete (contract amendment 2026-10-13 for `vega-card-inbox.v1`, backward compatible: producer `rigel` and origin kind `rigel-ref` accepted by the inbox validator, the card origin kinds and the `vega_add` input; session label `Tài liệu · <locator>` for rigel-ref cards, with or without `href`; guide topics `inbox` and `origins` list the Rigel producer; version 0.3.1 in package.json, VERSION and the e2e version checks; e2e 231 checks passing (207 before), 0 FAIL).

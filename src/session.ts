@@ -25,6 +25,7 @@ export const ORIGIN_KIND_LABELS: Record<OriginKind, string> = {
   "aurora-predict": "Dự đoán",
   "orion-attempt": "Orion",
   "mira-stop": "Mira",
+  "rigel-ref": "Tài liệu",
   manual: "Thủ công",
 };
 
@@ -40,8 +41,9 @@ function miraStopDetail(text: string): string {
 
 /**
  * Short Vietnamese description of where a card comes from: "<kind name> · <detail>", for example
- * "Mira · điểm dừng 3", "Sổ lỗi · ERR_2026-10-12_ab12cd" or "Orion · <check>". The detail is the origin locator,
- * falling back to the tail of the card key (<producer>:<scope>:<detail>), then to the deck.
+ * "Mira · điểm dừng 3", "Sổ lỗi · ERR_2026-10-12_ab12cd", "Orion · <check>" or "Tài liệu · D3#12 · slide 7" (rigel-ref).
+ * The detail is the origin locator, falling back to the tail of the card key (<producer>:<scope>:<detail>), then to
+ * the deck. A rigel-ref card has no key tail fallback (its key tail ends with a hash), only locator, then deck.
  */
 export function describeOrigin(card: Pick<Card, "origin" | "deck" | "key">): string {
   const kind = card.origin.kind;
@@ -129,7 +131,10 @@ export async function createSessionDeck(options: SessionOptions = {}): Promise<S
       originObj = { label: describeOrigin(c), href: c.origin.href };
     } else if (c.origin) {
       let label = "";
-      if (c.origin.locator) {
+      if (c.origin.kind === "rigel-ref") {
+        // A rigel-ref card always reads "Tài liệu · <locator>", with or without a link.
+        label = describeOrigin(c);
+      } else if (c.origin.locator) {
         label = c.deck ? `${c.deck} · ${c.origin.locator}` : c.origin.locator;
       } else if (c.deck) {
         label = c.deck;

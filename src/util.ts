@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 
 export function resolveHubDir(hub?: string): string {
   const envHub = process.env.VEGA_HUB;

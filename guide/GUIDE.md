@@ -99,7 +99,7 @@ Aurora deck.json (notebook/quiz/palace)
 
 1. **Khám phá ứng viên (Discovery):** Gọi `vega_candidates` với đường dẫn file `facts.json`, `errorlog.md` hoặc `deck.json`.
 2. **Biên tập & Nạp thẻ (Authoring):** Agent rà soát, tinh chỉnh câu chữ theo quy tắc soạn thẻ, sau đó gọi `vega_add` để thêm vào bộ sưu tập.
-3. **Nhận thẻ từ các công cụ khác (Inbox):** Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại) và Mira (điểm dừng dự đoán sai) thả tệp `.jsonl` vào `.vega/inbox/`. Gọi `vega_inbox { action: "list" }` để xem trước, `vega_inbox { action: "ingest" }` để nạp (hoặc để `vega_sync` nạp). Xem mục 6.
+3. **Nhận thẻ từ các công cụ khác (Inbox):** Polaris (Sổ lỗi, câu tự kiểm tra), Orion (lỗi lặp lại), Mira (điểm dừng dự đoán sai) và Rigel (câu hỏi có nguồn dẫn từ tài liệu bài học, nguồn `rigel-ref`) thả tệp `.jsonl` vào `.vega/inbox/`. Gọi `vega_inbox { action: "list" }` để xem trước, `vega_inbox { action: "ingest" }` để nạp (hoặc để `vega_sync` nạp). Xem mục 6.
 4. **Phiên học hàng ngày với Aurora Deck (Daily Review):** Gọi `vega_session` (hoặc prompt `review_today`) để xuất bộ slide ôn tập vào `.vega/session/deck.json`. Người học mở bài ôn tập qua `aurora_preview`, lật thẻ và đánh giá qua các phím số 1-4.
 5. **Tự động đồng bộ kết quả (Sync to FSRS):** Gọi `vega_sync` để nạp hộp thư thẻ, rồi nạp toàn bộ đánh giá từ `progress.jsonl` vào thuật toán FSRS một cách bất biến (idempotent).
 6. **Giám sát & Tối ưu (Monitoring):** Định kỳ gọi `vega_stats` để theo dõi tải học tập 7 ngày tới và phát hiện các thẻ bị quên từ 6 lần trở lên (`lapses >= 6`) để tái cấu trúc.
@@ -160,5 +160,5 @@ Bản đầy đủ: `vega_guide { topic: "inbox" }`. Hợp đồng dùng chung: 
 - Mỗi dòng: `v`, `t`, `producer`, `key` (bắt đầu bằng `<producer>:`), `subject`, `deck?`, `kind?`, `front`, `back`, `hint?`, `hook?`, `origin {kind, path, locator?, href?}`, `tags?`, `reason?`. Trường lạ bị từ chối.
 - `vega_inbox { action: "ingest" }` (hoặc bước đầu của `vega_sync`) xử lý tệp theo thứ tự tên: bỏ qua dòng có `key` đã tồn tại (thẻ đang học, tạm dừng hoặc đã xóa mềm), tạo thẻ mới trạng thái New cho dòng còn lại, chuyển tệp sang `inbox/done/`, ghi dòng lỗi kèm `_error` vào `inbox/rejected/<cùng tên>`. Chạy lại không đổi gì.
 - `vega_inbox { action: "list" }` chỉ xem trước, không ghi gì. CLI: `vega inbox list|ingest [--json]`.
-- Khóa chuẩn: `polaris:<môn>:<mã mục Sổ lỗi>`, `polaris:<môn>:selfcheck:<module>:<chỉ số>`, `orion:<lab>:<phép kiểm tra>`, `mira:<trình phát>:stop-<k>`.
+- Khóa chuẩn: `polaris:<môn>:<mã mục Sổ lỗi>`, `polaris:<môn>:selfcheck:<module>:<chỉ số>`, `orion:<lab>:<phép kiểm tra>`, `mira:<trình phát>:stop-<k>`, `rigel:<môn hoặc khóa học>:<ref>:<8 hex đầu của sha1(front)>`.
 

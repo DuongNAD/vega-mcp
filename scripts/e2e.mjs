@@ -6,7 +6,8 @@
  * candidate extraction with origins from copied real Aurora deck & Polaris fixtures,
  * de-duplication, due ordering, daily limits, review state progression, review log persistence,
  * stats computation, atomic writes, the card inbox (contract vega-card-inbox.v1: strict validation,
- * key de-duplication, done/ and rejected/, idempotency, vega_sync integration, session origin labels),
+ * key de-duplication, done/ and rejected/, idempotency, vega_sync integration, session origin labels, and the
+ * amendment 2026-10-13: producer "rigel" with origin kind "rigel-ref"),
  * and CLI commands on a temporary directory under %TEMP%. Every fixture lives under %TEMP%.
  *
  *   node scripts/e2e.mjs
@@ -490,7 +491,7 @@ const fixtureProgressFile = join(TEST_DIR, "fixture_progress.jsonl");
 try {
   // 4.1 Server Identification and Instructions
   const info = client.getServerVersion();
-  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.3.0", `${info?.name} ${info?.version}`);
+  ok("server identifies itself as vega", info?.name === "vega" && info?.version === "0.3.1", `${info?.name} ${info?.version}`);
 
   const instructions = client.getInstructions() ?? "";
   ok(
@@ -1801,6 +1802,290 @@ try {
   }
   ok("vega_inbox rejects an unknown action", invalidActionRejected);
 
+  /* ───────── 4.18 Rigel producer and rigel-ref origin (amendment 2026-10-13, v0.3.1) ───────── */
+
+  console.log("\n--- Rigel producer: Rigel feeds the inbox (amendment 2026-10-13, v0.3.1) ---");
+
+  const sameMembers = (a, b) => isDeepStrictEqual([...a].sort(), [...b].sort());
+  ok(
+    "the enums grew by exactly the amendment: producer rigel, origin kind rigel-ref (nothing removed, nothing else added)",
+    sameMembers(vegaLib.INBOX_PRODUCERS, ["polaris", "orion", "mira", "aurora", "sirius", "rigel", "manual"]) &&
+      sameMembers(vegaLib.INBOX_ORIGIN_KINDS, [
+        "polaris-fact",
+        "polaris-errorlog",
+        "polaris-selfcheck",
+        "aurora-quiz",
+        "aurora-predict",
+        "orion-attempt",
+        "mira-stop",
+        "rigel-ref",
+        "manual",
+      ]) &&
+      sameMembers(vegaLib.ORIGIN_KINDS, [
+        "polaris-fact",
+        "polaris-errorlog",
+        "polaris-selfcheck",
+        "aurora-notebook",
+        "aurora-quiz",
+        "aurora-flashcard",
+        "aurora-palace",
+        "aurora-predict",
+        "orion-attempt",
+        "mira-stop",
+        "rigel-ref",
+        "manual",
+      ]),
+    `${vegaLib.INBOX_PRODUCERS.length} producers, ${vegaLib.INBOX_ORIGIN_KINDS.length} inbox origin kinds, ${vegaLib.ORIGIN_KINDS.length} card origin kinds`,
+  );
+  const vegaAddSchema = JSON.stringify(tools.find((t) => t.name === "vega_add")?.inputSchema ?? {});
+  ok(
+    "the vega_add input schema offers the rigel-ref origin kind",
+    vegaAddSchema.includes('"rigel-ref"') && vegaAddSchema.includes('"mira-stop"'),
+  );
+
+  const RIGEL_SUBJECT = "GCI_World_2026_September";
+  const RIGEL_SRC = "C:/fixtures/GCI_World_2026_September/03_Materials/D3_lecture.md";
+  const RIGEL_KEY_1 = "rigel:GCI_World_2026_September:D3#12:9f2c1a0b";
+  const RIGEL_KEY_2 = "rigel:GCI_World_2026_September:D3#14:0a1b2c3d";
+  const RIGEL_HREF = "file:///C:/fixtures/GCI_World_2026_September/03_Materials/D3_lecture.md#D3-14";
+  /** A valid Rigel line; override any field. */
+  const rigelLine = (over = {}) => ({
+    v: 1,
+    t: "2026-10-13T09:00:00+07:00",
+    producer: "rigel",
+    key: RIGEL_KEY_1,
+    subject: RIGEL_SUBJECT,
+    deck: "D3",
+    front: "Vì sao phải tách dữ liệu thành tập huấn luyện và tập kiểm tra?",
+    back: "Để đo khả năng khái quát hóa của mô hình trên dữ liệu chưa từng thấy.",
+    origin: { kind: "rigel-ref", path: RIGEL_SRC, locator: "D3#12 · slide 7" },
+    tags: ["rigel"],
+    reason: "Câu trả lời có trích dẫn D3#12",
+    ...over,
+  });
+
+  const rigelValid = V(rigelLine());
+  ok(
+    "validator accepts a rigel line: producer rigel, key rigel:..., origin rigel-ref with absolute path and '<ref> · slide N' locator",
+    rigelValid.ok === true &&
+      rigelValid.line.producer === "rigel" &&
+      rigelValid.line.key === RIGEL_KEY_1 &&
+      rigelValid.line.kind === "basic" &&
+      rigelValid.line.origin.kind === "rigel-ref" &&
+      rigelValid.line.origin.path === RIGEL_SRC &&
+      rigelValid.line.origin.locator === "D3#12 · slide 7",
+    rigelValid.ok ? "" : rigelValid.errors.join(" | "),
+  );
+  ok(
+    "validator accepts a minimal rigel line (required fields only: no deck, locator, href, tags)",
+    V({
+      v: 1,
+      t: "2026-10-13T02:00:00Z",
+      producer: "rigel",
+      key: RIGEL_KEY_1,
+      subject: RIGEL_SUBJECT,
+      front: "Câu hỏi ngắn?",
+      back: "",
+      origin: { kind: "rigel-ref", path: RIGEL_SRC },
+    }).ok === true,
+  );
+  const rejectsRigel = (label, mutate, needle) => {
+    const line = JSON.parse(JSON.stringify(rigelLine()));
+    mutate(line);
+    const res = V(line);
+    ok(`validator rejects ${label}`, res.ok === false && res.errors.some((e) => e.includes(needle)), res.ok ? "accepted" : res.errors.join(" | "));
+  };
+  rejectsRigel("a rigel line whose key carries another producer's prefix", (l) => { l.key = "polaris:GCI_World_2026_September:D3#12:9f2c1a0b"; }, '"key" phải bắt đầu bằng "rigel:"');
+  rejectsRigel("a rigel line whose key has no producer prefix", (l) => { l.key = "GCI_World_2026_September:D3#12:9f2c1a0b"; }, '"key" phải bắt đầu bằng "rigel:"');
+  rejectsRigel("a rigel line whose key is only the prefix", (l) => { l.key = "rigel:"; }, '"key" phải bắt đầu bằng "rigel:"');
+  rejectsRigel("a rigel line with an origin kind outside the contract (rigel-note)", (l) => { l.origin.kind = "rigel-note"; }, '"origin.kind" phải là một trong');
+  rejectsRigel("a rigel line with an unknown field", (l) => { l.course = "GCI"; }, 'trường lạ không được phép: "course"');
+  const miraWithRigelKey = V(mkLine({ key: RIGEL_KEY_1 }));
+  ok(
+    "a key must carry the prefix of the line's own producer: a mira line with a rigel: key is rejected",
+    miraWithRigelKey.ok === false && miraWithRigelKey.errors.some((e) => e.includes('"key" phải bắt đầu bằng "mira:"')),
+  );
+  const unknownProducerRes = V(mkLine({ producer: "claude" }));
+  ok(
+    "the unknown-producer error lists rigel among the accepted producers",
+    unknownProducerRes.ok === false && unknownProducerRes.errors.some((e) => e.includes("sirius, rigel, manual")),
+    unknownProducerRes.ok ? "accepted" : unknownProducerRes.errors.join(" | "),
+  );
+
+  // A rigel batch through the real inbox: two good lines (one without href, one cloze with href), two bad ones
+  const rigelHub = join(TEST_DIR, "rigel_hub");
+  mkdirSync(rigelHub, { recursive: true });
+  const rigelInboxDir = inboxDirOf(rigelHub);
+  const RIGEL_FILE = "rigel-20261013T090000-9f2c1a.jsonl";
+  writeInboxFile(rigelHub, RIGEL_FILE, [
+    rigelLine(), // 1 created: no href
+    rigelLine({
+      // 2 created: cloze with an href
+      key: RIGEL_KEY_2,
+      kind: "cloze",
+      front: "Tập [[kiểm tra]] dùng để đo khả năng khái quát hóa của mô hình.",
+      back: "kiểm tra",
+      origin: { kind: "rigel-ref", path: RIGEL_SRC, locator: "D3#14 · slide 9", href: RIGEL_HREF },
+    }),
+    rigelLine({ key: "mira:GCI_World_2026_September:D3#13:1a2b3c4d" }), // 3 rejected: key prefix of another producer
+    rigelLine({ key: "rigel:GCI_World_2026_September:D3#15:5e6f7a8b", origin: { kind: "rigel-note", path: RIGEL_SRC } }), // 4 rejected: origin kind
+  ]);
+  const rigelTreeBeforeList = treeSnapshot(join(rigelHub, ".vega"));
+  r = await call("vega_inbox", { action: "list", hub: rigelHub });
+  const rigelListText = textOf(r);
+  ok(
+    "vega_inbox list previews a rigel batch (2 would be created, 2 rejected) and writes nothing",
+    !r.isError &&
+      rigelListText.includes("Tệp đang chờ: 1 (4 dòng)") &&
+      rigelListText.includes("tạo 2 thẻ mới · bỏ qua 0 dòng trùng khóa · từ chối 2 dòng") &&
+      rigelListText.includes(`${RIGEL_FILE}: 4 dòng · sẽ tạo 2 · trùng 0 · sẽ từ chối 2`) &&
+      treeSnapshot(join(rigelHub, ".vega")) === rigelTreeBeforeList,
+    rigelListText.split("\n").slice(0, 4).join(" | "),
+  );
+
+  r = await call("vega_inbox", { action: "ingest", hub: rigelHub });
+  const rigelIngestText = textOf(r);
+  ok(
+    "vega_inbox ingest of a rigel batch: 2 cards created (listed with their rigel: keys), 2 lines rejected, file archived",
+    !r.isError &&
+      rigelIngestText.includes("Tệp đã đọc: 1 (4 dòng)") &&
+      rigelIngestText.includes("Thẻ mới tạo: 2") &&
+      rigelIngestText.includes("Trùng khóa (bỏ qua): 0") &&
+      rigelIngestText.includes("Dòng bị từ chối: 2") &&
+      rigelIngestText.includes(RIGEL_KEY_1) &&
+      rigelIngestText.includes(RIGEL_KEY_2) &&
+      existsSync(join(rigelInboxDir, "done", RIGEL_FILE)) &&
+      !existsSync(join(rigelInboxDir, RIGEL_FILE)),
+    rigelIngestText.split("\n").slice(0, 6).join(" | "),
+  );
+  const rigelCards = readCards(rigelHub);
+  const rigelCard1 = rigelCards.find((c) => c.key === RIGEL_KEY_1);
+  const rigelCard2 = rigelCards.find((c) => c.key === RIGEL_KEY_2);
+  ok(
+    "a rigel line becomes a New FSRS card that keeps its key and a rigel-ref origin (absolute path, locator, optional href)",
+    rigelCards.length === 2 &&
+      Boolean(rigelCard1 && rigelCard2) &&
+      rigelCard1.fsrs.state === 0 &&
+      rigelCard1.subject === RIGEL_SUBJECT &&
+      rigelCard1.deck === "D3" &&
+      rigelCard1.kind === "basic" &&
+      rigelCard1.created === new Date("2026-10-13T09:00:00+07:00").toISOString() &&
+      rigelCard1.origin.kind === "rigel-ref" &&
+      rigelCard1.origin.path === RIGEL_SRC &&
+      rigelCard1.origin.locator === "D3#12 · slide 7" &&
+      !("href" in rigelCard1.origin) &&
+      !("reason" in rigelCard1) &&
+      rigelCard2.kind === "cloze" &&
+      rigelCard2.origin.kind === "rigel-ref" &&
+      rigelCard2.origin.locator === "D3#14 · slide 9" &&
+      rigelCard2.origin.href === RIGEL_HREF,
+    JSON.stringify(rigelCard1?.origin),
+  );
+  const rigelRejected = readJsonl(join(rigelInboxDir, "rejected", RIGEL_FILE));
+  ok(
+    "rejected/ keeps both bad rigel lines with an _error: the wrong key prefix, then the unknown origin kind",
+    rigelRejected.length === 2 &&
+      rigelRejected[0]._error.startsWith("dòng 3: ") &&
+      rigelRejected[0]._error.includes('"key" phải bắt đầu bằng "rigel:"') &&
+      rigelRejected[1]._error.startsWith("dòng 4: ") &&
+      rigelRejected[1]._error.includes('"origin.kind" phải là một trong') &&
+      rigelRejected[1]._error.includes("rigel-ref") &&
+      !rigelCards.some((c) => c.key === "mira:GCI_World_2026_September:D3#13:1a2b3c4d" || c.key === "rigel:GCI_World_2026_September:D3#15:5e6f7a8b"),
+    rigelRejected.map((l) => l._error).join(" | ").slice(0, 160),
+  );
+
+  // The same keys sent again are duplicates, whatever the front
+  writeInboxFile(rigelHub, "rigel-20261013T100000-aaaaaa.jsonl", [
+    rigelLine(),
+    rigelLine({ front: "Cùng khóa, mặt trước khác: vẫn là bản trùng." }),
+  ]);
+  r = await call("vega_inbox", { action: "ingest", hub: rigelHub });
+  ok(
+    "re-sending a rigel key is a duplicate whatever the front (idempotent through the key)",
+    !r.isError && textOf(r).includes("Thẻ mới tạo: 0") && textOf(r).includes("Trùng khóa (bỏ qua): 2") && readCards(rigelHub).length === 2,
+    textOf(r).split("\n").slice(1, 5).join(" | "),
+  );
+
+  // vega_add takes the new origin kind and still refuses any other new one
+  r = await call("vega_add", {
+    hub: rigelHub,
+    cards: [
+      {
+        subject: RIGEL_SUBJECT,
+        deck: "D3",
+        front: "Thẻ thêm bằng vega_add có nguồn rigel-ref",
+        back: "Đáp án.",
+        key: "rigel:GCI_World_2026_September:D3#20:c0ffee00",
+        origin: { kind: "rigel-ref", path: RIGEL_SRC, locator: "D3#20 · trang 4" },
+      },
+    ],
+  });
+  ok("vega_add accepts a card with the rigel-ref origin kind", !r.isError && textOf(r).includes("Added 1 card(s)"), textOf(r).split("\n")[0]);
+  let rigelNoteAddRejected = false;
+  try {
+    const bad = await call("vega_add", {
+      hub: rigelHub,
+      cards: [{ subject: "S", front: "F", back: "B", origin: { kind: "rigel-note", path: "p" } }],
+    });
+    rigelNoteAddRejected = bad.isError === true;
+  } catch {
+    rigelNoteAddRejected = true;
+  }
+  ok("vega_add still refuses an origin kind outside the enum (rigel-note)", rigelNoteAddRejected && readCards(rigelHub).length === 3);
+
+  // Session deck: the label of a rigel-ref card is "Tài liệu · <locator>", with the producer's href when it has one
+  r = await call("vega_session", { date: "2026-10-13", hub: rigelHub, build: false, new_limit: 50 });
+  ok("vega_session runs on a collection that contains rigel cards", !r.isError && textOf(r).includes("Vega Session Created for 2026-10-13"));
+  const rigelDeck = JSON.parse(readFileSync(join(rigelHub, ".vega", "session", "deck.json"), "utf8"));
+  const rigelSlideOf = (k) => {
+    const card = readCards(rigelHub).find((c) => c.key === k);
+    return rigelDeck.slides.find((s) => s.type === "srs" && s.card === card?.id);
+  };
+  const rigelSlide1 = rigelSlideOf(RIGEL_KEY_1);
+  const rigelSlide2 = rigelSlideOf(RIGEL_KEY_2);
+  const rigelSlide3 = rigelSlideOf("rigel:GCI_World_2026_September:D3#20:c0ffee00");
+  ok(
+    "session srs slides of rigel cards: label 'Tài liệu · <locator>', href only when the card has one",
+    rigelSlide1?.origin?.label === "Tài liệu · D3#12 · slide 7" &&
+      rigelSlide1?.origin?.href === undefined &&
+      rigelSlide2?.origin?.label === "Tài liệu · D3#14 · slide 9" &&
+      rigelSlide2?.origin?.href === RIGEL_HREF &&
+      rigelSlide3?.origin?.label === "Tài liệu · D3#20 · trang 4",
+    JSON.stringify([rigelSlide1?.origin, rigelSlide2?.origin, rigelSlide3?.origin]),
+  );
+  ok(
+    "describeOrigin: rigel-ref -> 'Tài liệu · <locator>', falling back to the deck, never to the key tail, truncated at 80",
+    describe({ origin: { kind: "rigel-ref", path: "p", locator: "D3#12 · slide 7" } }) === "Tài liệu · D3#12 · slide 7" &&
+      describe({ origin: { kind: "rigel-ref", path: "p" }, deck: "D3" }) === "Tài liệu · D3" &&
+      describe({ origin: { kind: "rigel-ref", path: "p" }, key: RIGEL_KEY_1 }) === "Tài liệu" &&
+      describe({ origin: { kind: "rigel-ref", path: "p", locator: "x".repeat(200) } }).length === 80,
+  );
+
+  // vega_sync ingests a rigel batch like any other
+  writeInboxFile(rigelHub, "rigel-20261013T110000-bbbbbb.jsonl", [
+    rigelLine({ key: "rigel:GCI_World_2026_September:D3#21:deadbeef", origin: { kind: "rigel-ref", path: RIGEL_SRC, locator: "D3#21 · mục 2.1" } }),
+  ]);
+  r = await call("vega_sync", { hub: rigelHub });
+  ok(
+    "vega_sync ingests a rigel batch first and reports its counts",
+    !r.isError && textOf(r).includes("Hộp thư thẻ: đọc 1 tệp · tạo 1 thẻ · trùng 0 · từ chối 0") && readCards(rigelHub).length === 4,
+    textOf(r).split("\n").slice(0, 2).join(" | "),
+  );
+
+  // Guide topics
+  r = await call("vega_guide", { topic: "inbox" });
+  const guideInboxRigel = textOf(r);
+  ok(
+    "vega_guide inbox names the rigel producer: table row, accepted producer and origin kind, key convention",
+    !r.isError &&
+      guideInboxRigel.includes("Rigel (rigel-mcp)") &&
+      guideInboxRigel.includes("`rigel-ref`") &&
+      guideInboxRigel.includes("`sirius`, `rigel`, `manual`") &&
+      guideInboxRigel.includes("rigel:<môn hoặc khóa học>:<ref>:<8 hex đầu của sha1(front)>"),
+  );
+  r = await call("vega_guide", { topic: "origins" });
+  ok("vega_guide origins lists rigel-ref and its review label", !r.isError && textOf(r).includes("`rigel-ref`") && textOf(r).includes("Tài liệu · <locator>"));
+
 } catch (e) {
   failed++;
   console.log(`FAIL unexpected error: ${e?.stack ?? e}`);
@@ -1813,7 +2098,7 @@ try {
 console.log("\n--- CLI Interface Tests ---");
 
 const versionCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "version"], { encoding: "utf8" });
-ok("CLI version prints 0.3.0", versionCli.trim() === "0.3.0", versionCli.trim());
+ok("CLI version prints 0.3.1", versionCli.trim() === "0.3.1", versionCli.trim());
 
 const helpCli = execFileSync(process.execPath, [join(ROOT, "dist", "vega.mjs"), "help"], { encoding: "utf8" });
 ok(
